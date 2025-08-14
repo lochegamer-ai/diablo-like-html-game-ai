@@ -259,6 +259,115 @@ function drawEnemy(en){
   state.ctx.restore();
 }
 
+// seta do player com foreshortening isométrico
+function drawPlayer(){
+  const p = state.player;
+  const base = isoToScreen(p.x, p.y, state.origin);
+
+  // ângulo já está em “tela” (visualAngle); aplicamos anisotropia no eixo Y
+  const ang = p.visualAngle;
+  const ay  = 0.58;          // compressão no Y (isométrico ~0.5–0.6)
+  const elev = 6;            // “levanta” a seta do chão para não parecer colada
+  const cx = base.x;
+  const cy = base.y - elev;
+
+  // helpers
+  const dir = a => ({ x: Math.cos(a), y: Math.sin(a) });
+  const isoV = v => ({ x: v.x, y: v.y * ay });
+  const rot = (v, a) => ({ x: v.x*Math.cos(a) - v.y*Math.sin(a), y: v.x*Math.sin(a) + v.y*Math.cos(a) });
+
+  // vetor para frente e “asas” (laterais), já com anisotropia
+  const vF  = isoV(dir(ang));
+  const vL  = isoV(rot(dir(ang),  2.20));
+  const vR  = isoV(rot(dir(ang), -2.20));
+
+  // dimensões visuais (pode ajustar ao gosto)
+  const fw   = 28;  // comprimento da ponta
+  const back = 12;  // recuo traseiro
+  const side = 16;  // abertura lateral
+
+  const nose  = { x: cx + vF.x * fw,   y: cy + vF.y * fw };
+  const tail  = { x: cx - vF.x * back, y: cy - vF.y * back };
+  const left  = { x: cx + vL.x * side, y: cy + vL.y * side };
+  const right = { x: cx + vR.x * side, y: cy + vR.y * side };
+
+  // sombra no chão
+  state.ctx.save();
+  state.ctx.fillStyle = 'rgba(0,0,0,.30)';
+  state.ctx.beginPath();
+  state.ctx.ellipse(base.x, base.y + 10, 12, 6, 0, 0, Math.PI*2);
+  state.ctx.fill();
+
+  // corpo
+  state.ctx.beginPath();
+  state.ctx.moveTo(tail.x,  tail.y);
+  state.ctx.lineTo(left.x,  left.y);
+  state.ctx.lineTo(nose.x,  nose.y);
+  state.ctx.lineTo(right.x, right.y);
+  state.ctx.closePath();
+
+  state.ctx.fillStyle   = '#ffd66b';
+  state.ctx.strokeStyle = '#7b5d1a';
+  state.ctx.lineWidth   = 2;
+  state.ctx.fill();
+  state.ctx.stroke();
+
+  // “luz de borda” na ponta — reforça leitura da direção
+  state.ctx.beginPath();
+  state.ctx.moveTo((tail.x+nose.x)/2, (tail.y+nose.y)/2);
+  state.ctx.lineTo(nose.x, nose.y);
+  state.ctx.strokeStyle = 'rgba(255,240,180,.9)';
+  state.ctx.lineWidth = 2;
+  state.ctx.stroke();
+
+  state.ctx.restore();
+}
+
+function drawChest(ch){
+  const s = isoToScreen(ch.x, ch.y, state.origin);
+  state.ctx.save();
+
+  // sombra
+  state.ctx.beginPath();
+  state.ctx.ellipse(s.x, s.y + 10, 12, 6, 0, 0, Math.PI*2);
+  state.ctx.fillStyle = 'rgba(0,0,0,.25)';
+  state.ctx.fill();
+
+  // corpo do baú
+  const w = 24, h = 14, lid = 10;
+  // base
+  state.ctx.fillStyle = '#7b4a20';
+  state.ctx.strokeStyle = '#2a1a0c';
+  state.ctx.lineWidth = 1.5;
+  state.ctx.beginPath();
+  state.ctx.rect(s.x - w/2, s.y - h/2, w, h);
+  state.ctx.fill(); state.ctx.stroke();
+
+  // tampa (aberta ou fechada)
+  state.ctx.beginPath();
+  if (!ch.opened){
+    // tampa fechada em cima
+    state.ctx.rect(s.x - w/2, s.y - h/2 - lid, w, lid);
+    state.ctx.fillStyle = '#8e5827';
+    state.ctx.fill(); state.ctx.stroke();
+    // ferragem
+    state.ctx.fillStyle = '#c9b26a';
+    state.ctx.fillRect(s.x - 3, s.y - h/2 - 2, 6, 4);
+  } else {
+    // tampa aberta "para trás"
+    state.ctx.fillStyle = '#8e5827';
+    state.ctx.beginPath();
+    state.ctx.moveTo(s.x - w/2, s.y - h/2);
+    state.ctx.lineTo(s.x + w/2, s.y - h/2);
+    state.ctx.lineTo(s.x + w/2, s.y - h/2 - lid - 6);
+    state.ctx.lineTo(s.x - w/2, s.y - h/2 - lid - 6);
+    state.ctx.closePath();
+    state.ctx.fill(); state.ctx.stroke();
+  }
+
+  state.ctx.restore();
+}
+
 
 export function render(){
   state.ctx.clearRect(0,0,state.canvas.width,state.canvas.height);
@@ -278,26 +387,15 @@ export function render(){
   // enemies & loot minimal (drawn in systems if needed). This module focuses on world & player visuals.
   // loot no chão
   state.groundLoot.forEach(drawGroundLoot);
+
+  // baús
+  (state.chests || []).forEach(drawChest);
   
   // inimigos
   state.enemies.forEach(drawEnemy);
 
   // Player
-  const p=state.player;
-  const base=isoToScreen(p.x,p.y,state.origin);
-  const ang=p.visualAngle;
-  const ux=Math.cos(ang), uy=Math.sin(ang);
-  const fw=22, back=10, side=14;
-  const nose={x:base.x+ux*fw,y:base.y+uy*fw}, tail={x:base.x-ux*back,y:base.y-uy*back};
-  const rot=(x,y,a)=>({x:x*Math.cos(a)-y*Math.sin(a),y:x*Math.sin(a)+y*Math.cos(a)});
-  const lV=rot(ux,uy,2.20), rV=rot(ux,uy,-2.20);
-  const left={x:base.x+lV.x*side,y:base.y+lV.y*side}, right={x:base.x+rV.x*side,y:base.y+rV.y*side};
-  state.ctx.save();
-  state.ctx.fillStyle='rgba(0,0,0,.30)'; state.ctx.beginPath(); state.ctx.ellipse(base.x,base.y+10,12,6,0,0,Math.PI*2); state.ctx.fill();
-  state.ctx.beginPath(); state.ctx.moveTo(tail.x,tail.y); state.ctx.lineTo(left.x,left.y); state.ctx.lineTo(nose.x,nose.y); state.ctx.lineTo(right.x,right.y); state.ctx.closePath();
-  state.ctx.fillStyle='#ffd66b'; state.ctx.strokeStyle='#7b5d1a'; state.ctx.lineWidth=2; state.ctx.fill(); state.ctx.stroke();
-  state.ctx.beginPath(); state.ctx.moveTo((tail.x+nose.x)/2,(tail.y+nose.y)/2); state.ctx.lineTo(nose.x,nose.y); state.ctx.strokeStyle='#b78b2a'; state.ctx.lineWidth=2; state.ctx.stroke();
-  state.ctx.restore();
+  drawPlayer();
   // slashes (ataque melee)
   state.slashes.forEach(drawSlash);
   // projéteis (magia)

@@ -2,10 +2,11 @@
 import {state} from './state.js';
 import {lineClear, isWallAt, isHoleAt, moveWithCollision} from './collision.js';
 import {MAP_W, MAP_H, FLOOR} from './config.js';
+import {rand, choice} from './utils/math.js';
+import {rollItem} from './items.js';
 import {computeFlowFrom, isWalkableCell} from './pathfinding.js';
 import {screenToWorld, getCenterOriginFor} from './iso/coords.js';
 import {log, renderHotbar, applyAllBonuses, updateObjectiveHUD  } from './ui.js';
-import {rollItem} from './items.js';
 import {clamp, angLerp} from './utils/math.js';
 
 // tempo corrido da fase (reiniciado quando inimigos são gerados)
@@ -26,7 +27,21 @@ export function castFireboltWorld(wx,wy){
   state.projectiles.push({x:p.x,y:p.y,dx:dir.x*12/60,dy:dir.y*12/60,ttl:1.2,dmg:18});
 }
 export function castFireboltAtScreen(sx,sy){const w=screenToWorld(sx,sy,state.origin); castFireboltWorld(w.x,w.y)}
-export function meleeAttack(){ if(state.meleeCD>0||state.gameOver) return; const angle=state.player.facingAngle||0; state.slashes.push({x:state.player.x,y:state.player.y,angle,range:2.0,arc:(50*Math.PI/180),ttl:0.18,t:0,hit:new Set()}); state.meleeCD=0.35 }
+ export function meleeAttack(){
+   if(state.meleeCD>0||state.gameOver) return;
+   const angle=state.player.facingAngle||0;
+   state.slashes.push({x:state.player.x,y:state.player.y,angle,range:2.0,arc:(50*Math.PI/180),ttl:0.18,t:0,hit:new Set()});
+   state.meleeCD=0.35;
+  // abrir baús se bem perto (e linha limpa)
+  for (const ch of state.chests){
+    if (ch.opened) continue;
+    const dx = ch.x - state.player.x, dy = ch.y - state.player.y;
+    const d = Math.hypot(dx,dy);
+    if (d <= 1.2 && lineClear(state.dungeon, state.player.x, state.player.y, ch.x, ch.y)){
+      openChest(ch);
+    }
+  }
+ }
 state.meleeCD=0;
 
 const deathQueue=[];
@@ -130,6 +145,73 @@ export function resetGame(reason='Reiniciando...'){
   applyAllBonuses(); renderHotbar(); log(reason);
 }
 export function dieInHole(){ if(state.gameOver) return; state.gameOver=true; state.player.dead=true; log('Você caiu em um buraco!'); setTimeout(()=>resetGame('Você caiu em um buraco! Reiniciando...'),400); }
+
+// ---- BAÚS ----
+function chestOffsets() {
+  // posições a 1–2 tiles de distância (inclui diagonais), sem (0,0)
+  const ring = [];
+  for (let dy=-2; dy<=2; dy++) for (let dx=-2; dx<=2; dx++){
+    if (dx===0 && dy===0) continue;
+    const md = Math.max(Math.abs(dx), Math.abs(dy));
+    if (md>=1 && md<=2) ring.push([dx,dy]);
+  }
+  // embaralha
+  for (let i=ring.length-1; i>0; i--){
+    const j=(Math.random()*(i+1))|0; [ring[i],ring[j]]=[ring[j],ring[i]];
+  }
+  return ring;
+}
+
+export function spawnChests(min=1,max=3){
+  if (!state.chests) state.chests = []; else state.chests.length = 0;
+  const grid = state.dungeon?.grid;
+  if (!grid) return; // dungeon ainda não criada
+
+  const want = min + Math.floor(Math.random()*(max-min+1)); // 1..3
+  const used = new Set();
+  // player pode não existir ainda — use fallback seguro
+  const p = state.player;
+  const px = Number.isFinite(p?.x) ? Math.floor(p.x) : -9999;
+  const py = Number.isFinite(p?.y) ? Math.floor(p.y) : -9999;
+
+  let attempts = 0, placed = 0, maxAttempts = 4000;
+  while (placed < want && attempts < maxAttempts){
+    attempts++;
+    const x = Math.floor(Math.random()*MAP_W);
+    const y = Math.floor(Math.random()*MAP_H);
+    const k = y*1024 + x;
+    if (used.has(k)) continue;
+    if (grid?.[y]?.[x] !== FLOOR) continue;
+    // não colar no player
+    if (Math.abs(x-px)+Math.abs(y-py) < 4) continue;
+
+    used.add(k);
+    state.chests.push({id:Math.random().toString(36).slice(2), x:x+0.5, y:y+0.5, opened:false});
+    placed++;
+  }
+}
+
+function scatterFromChest(cx, cy, count){
+  const cand = chestOffsets();
+  let dropped = 0;
+  for (const [dx,dy] of cand){
+    const x = Math.floor(cx + dx), y = Math.floor(cy + dy);
+    if (x<0||y<0||x>=MAP_W||y>=MAP_H) continue;
+    if (state.dungeon.grid[y][x] !== FLOOR) continue;
+    state.groundLoot.push({x:x+0.5, y:y+0.5, item:rollItem()});
+    dropped++;
+    if (dropped>=count) break;
+  }
+}
+
+function openChest(ch){
+  if (!ch || ch.opened) return;
+  ch.opened = true;
+  // 95% = 1 item, 5% = 2 itens
+  const count = (Math.random() < 0.05) ? 2 : 1;
+  scatterFromChest(Math.floor(ch.x), Math.floor(ch.y), count);
+  log(`Baú aberto — dropou ${count} item(ns).`);
+}
 
 export function update(dt){
   phaseTime += dt;
@@ -273,7 +355,7 @@ export function update(dt){
   }
 
   state.player.mana=Math.min(state.player.maxMana, state.player.mana+2*dt);
-  
+
   processDeaths();
 
   if (objectiveResetTimer >= 0) {

@@ -25,11 +25,74 @@ export function makeDungeon(seed=Date.now()){
   }
   return {grid:g,rooms};
 }
-export function sprinkleHoles(dungeon,player,minDist=6,ch=0.035){
-  for(let y=1;y<MAP_H-1;y++) for(let x=1;x<MAP_W-1;x++){
-    if(dungeon.grid[y][x]!==FLOOR) continue;
-    const d=Math.hypot((x+0.5)-player.x,(y+0.5)-player.y);
-    if(d<minDist) continue;
-    if(Math.random()<ch) dungeon.grid[y][x]=HOLE;
+
+// retorna true se a célula (x,y) for um segmento de corredor 1×N (somente 2 vizinhos ortogonais e opostos)
+function isNarrowCorridor(grid, x, y){
+  if (grid[y][x] !== FLOOR) return false;
+  const up    = grid[y-1]?.[x] === FLOOR;
+  const down  = grid[y+1]?.[x] === FLOOR;
+  const left  = grid[y]?.[x-1] === FLOOR;
+  const right = grid[y]?.[x+1] === FLOOR;
+  const count = (up?1:0) + (down?1:0) + (left?1:0) + (right?1:0);
+  // corredor 1×N: exatamente 2 vizinhos e eles são opostos (N+S) ou (W+E)
+  return count === 2 && ((up && down) || (left && right));
+}
+
+export function sprinkleHoles(
+  dungeon,
+  player,
+  minDist = 6,
+  {
+    chance = 0.012,      // ↓ era ~0.035 — agora bem menos
+    maxDensity = 0.02,   // no máx. ~2% dos pisos viram buraco
+    spacing = 2,         // evita buracos muito próximos
+    avoidCorridors = true
+  } = {}
+){
+  const g = dungeon.grid;
+  const floors = [];
+
+  // coleta pisos válidos (ignora borda pra não precisar checar bounds toda hora)
+  for (let y = 1; y < MAP_H-1; y++){
+    for (let x = 1; x < MAP_W-1; x++){
+      if (g[y][x] === FLOOR) floors.push([x,y]);
+    }
+  }
+
+  // baralha pra não favorecer áreas específicas
+  for (let i = floors.length - 1; i > 0; i--){
+    const j = (Math.random() * (i + 1)) | 0;
+    [floors[i], floors[j]] = [floors[j], floors[i]];
+  }
+
+  const maxHoles = Math.floor(floors.length * maxDensity);
+  let placed = 0;
+
+  for (const [x, y] of floors){
+    if (placed >= maxHoles) break;
+
+    // distância mínima do jogador (não trollar spawn)
+    const d = Math.hypot((x+0.5) - player.x, (y+0.5) - player.y);
+    if (d < minDist) continue;
+
+    // não bloquear corredores 1×N
+    if (avoidCorridors && isNarrowCorridor(g, x, y)) continue;
+
+    // respeitar espaçamento Manhattan entre buracos existentes
+    let tooClose = false;
+    for (let dy = -spacing; dy <= spacing && !tooClose; dy++){
+      for (let dx = -spacing; dx <= spacing; dx++){
+        if (Math.abs(dx) + Math.abs(dy) > spacing) continue;
+        const yy = y + dy, xx = x + dx;
+        if (g[yy]?.[xx] === HOLE){ tooClose = true; break; }
+      }
+    }
+    if (tooClose) continue;
+
+    // chance final
+    if (Math.random() < chance){
+      g[y][x] = HOLE;
+      placed++;
+    }
   }
 }

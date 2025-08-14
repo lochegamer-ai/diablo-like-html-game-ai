@@ -1,6 +1,6 @@
 import {state} from './state.js';
 import {MAX_STACK} from './config.js';
-import {canStack,stackInto,isUsable,itemLabel,potionHint} from './items.js';
+import {canStack,stackInto,isUsable,itemLabel,potionHint, itemLore} from './items.js';
 
 export const logEl = document.getElementById('log'); // pode ficar, mas não vamos depender dele
 
@@ -35,6 +35,80 @@ export function log(t){
   el.textContent = msg;
   host.appendChild(el);
   host.scrollTop = host.scrollHeight;
+}
+
+// ——— Tooltip host ———
+let tipEl = null;
+function ensureTooltip(){
+  if (tipEl && document.body.contains(tipEl)) return tipEl;
+  tipEl = document.createElement('div');
+  tipEl.className = 'tooltip';
+  tipEl.style.display = 'none';
+  document.body.appendChild(tipEl);
+  return tipEl;
+}
+function rarityClass(r){ return r==='legendary' ? 't-legendary' : (r==='rare' ? 't-rare' : ''); }
+function slotLabel(it){
+  if (!it || !it.equip) return '';
+  const map = {head:'Capacete', chest:'Torso', legs:'Pernas', acc:'Acessório', hand:'Mão'};
+  const base = map[it.equip.slot] || it.equip.slot;
+  const hands = it.equip.hands===2 ? ' (2M)' : '';
+  if (it.kind==='shield') return 'Mão Secundária';
+  if (it.equip.slot==='hand') return `Mão Principal${hands}`;
+  return base;
+}
+function bonusLines(it){
+  const out = [];
+  if (!it) return out;
+  const b = it.bonus || {};
+  if (b.str) out.push(`+${b.str} Força`);
+  if (b.dex) out.push(`+${b.dex} Destreza`);
+  if (b.mag) out.push(`+${b.mag} Magia`);
+  if (b.vit) out.push(`+${b.vit} Vitalidade`);
+  if (b.hp)  out.push(`+${b.hp} Vida`);
+  // stats base
+  if (it.stats?.dmg) out.push(`Dano: ${it.stats.dmg}`);
+  if (it.stats?.ac)  out.push(`Defesa: ${it.stats.ac}`);
+  return out;
+}
+function itemTooltipHTML(it){
+  if (!it) return '';
+  const name = it.name || 'Item';
+  const rcls = rarityClass(it.rarity);
+  const slot = it.kind==='potion' ? 'Consumível' : slotLabel(it);
+  const bonuses = it.kind==='potion' ? [] : bonusLines(it);
+  const effect = it.kind==='potion' ? (potionHint(it) || '') : '';
+  const lore = itemLore(it);
+
+  const bList = bonuses.map(s=>`<li>${s}</li>`).join('');
+  const eff = effect ? `<div class="t-slot" style="margin-top:4px">${effect}</div>` : '';
+  return `
+    <div class="t-name ${rcls}">${name}</div>
+    ${slot ? `<div class="t-slot">${slot}</div>` : ''}
+    ${bonuses.length? `<ul>${bList}</ul>` : ''}
+    ${eff}
+    <div class="t-lore">${lore}</div>
+  `;
+}
+function positionTooltip(ev){
+  const el = ensureTooltip();
+  const pad = 14;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const rect = el.getBoundingClientRect();
+  if (x + rect.width > vw - 8)  x = vw - rect.width - 8;
+  if (y + rect.height > vh - 8) y = vh - rect.height - 8;
+  el.style.left = x+'px'; el.style.top = y+'px';
+}
+function showItemTooltip(it, ev){
+  const el = ensureTooltip();
+  el.innerHTML = itemTooltipHTML(it);
+  el.style.display = 'block';
+  positionTooltip(ev);
+}
+function hideTooltip(){
+  if (!tipEl) return;
+  tipEl.style.display = 'none';
 }
 
 // HUD (contador do objetivo) — cria se não existir
@@ -113,6 +187,13 @@ export class Inventory{
         if(isUsable(it)){ d.classList.add('potion',it.potion); d.textContent=' '; }
         else { d.textContent=itemLabel(it); }
         d.draggable=true; d.title=isUsable(it)?potionHint(it):'';
+
+        // tooltips
+        d.addEventListener('mouseenter', e=>showItemTooltip(it, e));
+        d.addEventListener('mousemove',  e=>positionTooltip(e));
+        d.addEventListener('mouseleave', hideTooltip);
+        d.addEventListener('dragstart',  hideTooltip);
+
         d.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',JSON.stringify({type:'inv',index:idx}))});
         s.appendChild(d);
         if(isUsable(it)){ const q=document.createElement('span'); q.className='qty'; q.textContent=String(it.count??1); s.appendChild(q); }
@@ -175,6 +256,13 @@ export function renderEquipment() {
     const it = equip[s];
     if (it) {
       const d = document.createElement('div');
+
+      // tooltips no item equipado
+      d.addEventListener('mouseenter', e=>showItemTooltip(it, e));
+      d.addEventListener('mousemove',  e=>positionTooltip(e));
+      d.addEventListener('mouseleave', hideTooltip);
+      d.addEventListener('dragstart',  hideTooltip);
+
       d.className = 'item';
       d.textContent = it.name;
       d.draggable = true;
@@ -232,6 +320,119 @@ export function getTotalBonuses(){return sumBonuses(getEquipBonuses(),getBuffBon
 export function setStatText(id,base,bonus){document.getElementById(id).textContent=String(base);document.getElementById(id+'B').textContent=bonus?`( +${bonus} )`:''}
 export function applyAllBonuses(){const b=getTotalBonuses();state.player.maxHp=state.player.baseMaxHp+(b.hp||0)+(b.vit||0)*5; if(state.player.hp>state.player.maxHp)state.player.hp=state.player.maxHp; setStatText('str',state.player.stats.str,(b.str||0)); setStatText('dex',state.player.stats.dex,(b.dex||0)); setStatText('mag',state.player.stats.mag,(b.mag||0)); setStatText('vit',state.player.stats.vit,(b.vit||0))}
 export const hotbarEl=document.getElementById('hotbar');
-export function renderHotbar(){ hotbarEl.innerHTML=''; for(let i=0;i<9;i++){ const s=document.createElement('div'); s.className='hb-slot'; s.dataset.idx=i; const k=document.createElement('div'); k.className='key'; k.textContent=String(i+1); s.appendChild(k); const it=state.hotbar[i]; if(it){ const d=document.createElement('div'); d.className='hb-item '+(it.potion||''); d.draggable=true; d.textContent=' '; d.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',JSON.stringify({type:'hb',index:i}))}); s.appendChild(d); const q=document.createElement('span'); q.className='qty'; q.textContent=String(it.count??1); s.appendChild(q);} s.addEventListener('dragover',e=>e.preventDefault()); s.addEventListener('drop',e=>{ e.preventDefault(); let payload; try{payload=JSON.parse(e.dataTransfer.getData('text/plain'))}catch{payload=null} if(!payload) return; if(payload.type==='inv'){ const idx=payload.index, src=state.inv.slots[idx]; if(!src || src.kind!=='potion'){log('A hotbar aceita apenas poções.'); return;} if(!state.hotbar[i]){ state.hotbar[i]=src; state.inv.slots[idx]=null; state.inv.render(); renderHotbar(); return; } if(canStack(state.hotbar[i],src)){ const moved=stackInto(state.hotbar[i],src); if((src.count??1)<=0) state.inv.slots[idx]=null; state.inv.render(); renderHotbar(); } else { [state.hotbar[i],state.inv.slots[idx]]=[src,state.hotbar[i]]; state.inv.render(); renderHotbar(); } } else if(payload.type==='hb'){ const from=payload.index; if(from===i) return; if(state.hotbar[from]&&state.hotbar[i]&&canStack(state.hotbar[i],state.hotbar[from])){ const moved=stackInto(state.hotbar[i],state.hotbar[from]); if((state.hotbar[from].count??1)<=0) state.hotbar[from]=null; } else { [state.hotbar[from],state.hotbar[i]]=[state.hotbar[i],state.hotbar[from]]; } renderHotbar(); }}); s.addEventListener('click',()=>useHotbar(i)); hotbarEl.appendChild(s);} }
+
+export function renderHotbar(){
+  hotbarEl.innerHTML = '';
+
+  for (let i = 0; i < 9; i++){
+    const s = document.createElement('div');
+    s.className = 'hb-slot';
+    s.dataset.idx = i;
+
+    const k = document.createElement('div');
+    k.className = 'key';
+    k.textContent = String(i + 1);
+    s.appendChild(k);
+
+    const it = state.hotbar[i];
+    if (it){
+      const d = document.createElement('div');
+      d.className = 'hb-item ' + (it.potion || '');
+      d.draggable = true;
+      d.textContent = ' ';
+
+      // tooltips
+      d.addEventListener('mouseenter', e => showItemTooltip(it, e));
+      d.addEventListener('mousemove',  e => positionTooltip(e));
+      d.addEventListener('mouseleave', hideTooltip);
+
+      // DnD
+      d.addEventListener('dragstart', e => {
+        hideTooltip();
+        e.dataTransfer.setData('text/plain', JSON.stringify({ type:'hb', index:i }));
+      });
+
+      s.appendChild(d);
+
+      // quantidade (stack)
+      const q = document.createElement('span');
+      q.className = 'qty';
+      q.textContent = String(it.count ?? 1);
+      s.appendChild(q);
+    }
+
+    // aceitar drops
+    s.addEventListener('dragover', e => e.preventDefault());
+    s.addEventListener('drop', e => {
+      e.preventDefault();
+      let payload;
+      try { payload = JSON.parse(e.dataTransfer.getData('text/plain')); }
+      catch { payload = null; }
+      if (!payload) return;
+
+      // do inventário → hotbar
+      if (payload.type === 'inv'){
+        const idx = payload.index;
+        const src = state.inv.slots[idx];
+        if (!src) return;
+
+        if (src.kind !== 'potion'){ log('A hotbar aceita apenas poções.'); return; }
+
+        if (!state.hotbar[i]){
+          state.hotbar[i] = src;
+          state.inv.slots[idx] = null;
+          state.inv.render(); renderHotbar();
+          return;
+        }
+
+        // empilhar
+        if (canStack(state.hotbar[i], src)){
+          const moved = stackInto(state.hotbar[i], src);
+          if ((src.count ?? 1) <= 0) state.inv.slots[idx] = null;
+          state.inv.render(); renderHotbar();
+          return;
+        }
+
+        // trocar
+        [state.hotbar[i], state.inv.slots[idx]] = [src, state.hotbar[i]];
+        state.inv.render(); renderHotbar();
+        return;
+      }
+
+      // hotbar ↔ hotbar
+      if (payload.type === 'hb'){
+        const from = payload.index;
+        if (from === i) return;
+
+        const A = state.hotbar[from];
+        const B = state.hotbar[i];
+
+        if (A && B && canStack(B, A)){
+          const moved = stackInto(B, A);
+          if ((A.count ?? 1) <= 0) state.hotbar[from] = null;
+          renderHotbar();
+          return;
+        }
+
+        [state.hotbar[from], state.hotbar[i]] = [state.hotbar[i], state.hotbar[from]];
+        renderHotbar();
+        return;
+      }
+
+      // equip → hotbar (não permitido)
+      if (payload.type === 'equip'){
+        log('A hotbar aceita apenas poções.');
+        return;
+      }
+    });
+
+    // clique usa o slot
+    s.addEventListener('click', () => useHotbar(i));
+
+    hotbarEl.appendChild(s);
+  }
+}
+
+
 export function useUsable(it){ if(!it||it.kind!=='potion')return false; const p=state.player; if(it.potion==='hp'){const v=Math.round(p.maxHp*0.15); p.hp=Math.min(p.maxHp,p.hp+v); log('Bebeu Poção de Vida (+15%)'); return true;} if(it.potion==='mana'){const v=Math.round(p.maxMana*0.15); p.mana=Math.min(p.maxMana,p.mana+v); log('Bebeu Poção de Mana (+15%)'); return true;} if(it.potion==='str'){state.buffs.push({type:'str',amount:5,t:10}); applyAllBonuses(); log('Poção de Força: +5 STR por 10s'); return true;} if(it.potion==='spd'){state.buffs.push({type:'spd',amount:0.05,t:10}); log('Poção de Velocidade: +5% por 10s'); return true;} return false; }
 export function useHotbar(i){ const it=state.hotbar[i]; if(!it)return; if(useUsable(it)){ it.count=(it.count??1)-1; if(it.count<=0) state.hotbar[i]=null; renderHotbar(); } }

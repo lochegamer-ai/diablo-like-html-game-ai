@@ -4,7 +4,7 @@ import {TILE_W,TILE_H,MAP_W,MAP_H} from './config.js';
 import {makeDungeon, sprinkleHoles} from './dungeon.js';
 import {isoToScreen,screenToWorld,getCenterOriginFor} from './iso/coords.js';
 import {Inventory, renderHotbar, renderEquipment, applyAllBonuses, log, ensureObjectiveHUD, updateObjectiveHUD, wireWallsButton} from './ui.js';
-import {spawnEnemies, scatterLoot, update, updateCameraFollow, resetGame} from './systems.js';
+import {spawnEnemies, scatterLoot, update, updateCameraFollow, resetGame, spawnChests} from './systems.js';
 import {render} from './render.js';   // (garante render vindo do lugar certo)
 import {attachInput} from './input.js';
 import {Player} from './entities.js';
@@ -21,7 +21,7 @@ function repairWorld() {
   state.dungeon = makeDungeon();
   placePlayer();
   sprinkleHoles(state.dungeon, state.player);
-  scatterLoot();
+  spawnChests(1,3);
   // usa seu helper do objetivo — garante (0/N) consistente
   setupObjectiveAndSpawn();
   centerCameraOnPlayer();
@@ -49,10 +49,11 @@ function step(ts){ const dt=(ts-state.last)/1000||0; state.last=ts;
 function init(){
   log('Jogo iniciado');
   state.dungeon=makeDungeon();
+  spawnChests(1,3);
   wireWallsButton();
   state.player=new Player(10,10);
   state.inv=new Inventory();
-  placePlayer(); sprinkleHoles(state.dungeon,state.player); scatterLoot(); setupObjectiveAndSpawn();
+  placePlayer(); sprinkleHoles(state.dungeon,state.player); spawnChests(1,3); setupObjectiveAndSpawn();
   centerCameraOnPlayer(); renderEquipment(); applyAllBonuses(); renderHotbar();
   attachInput();
   state.last=performance.now();
@@ -70,7 +71,7 @@ function init(){
     state.dungeon = makeDungeon();
     placePlayer();
     sprinkleHoles(state.dungeon, state.player);
-    scatterLoot();
+    spawnChests(1,3);
     setupObjectiveAndSpawn();
     // centraliza a câmera no player após recriar a fase
     const o = getCenterOriginFor(state.player.x, state.player.y, state.canvas);
@@ -90,4 +91,5 @@ window.addEventListener('game-reset', e => {
 // systems.resetGame() → dispara 'game-repair' → reconstrução aqui
 window.addEventListener('game-repair', () => {
   repairWorld();
+  spawnChests(1,3);
 });

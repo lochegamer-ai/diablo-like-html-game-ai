@@ -49,3 +49,17 @@ canvas{image-rendering:pixelated}
 .hb-item.mana{background:radial-gradient(circle at 30% 30%,#7ab6ff,#0b2c7a)}
 .hb-item.str{background:radial-gradient(circle at 30% 30%,#ffae6b,#7a3f0b)}
 .hb-item.spd{background:radial-gradient(circle at 30% 30%,#63d8a0,#0c5d3a)}
+/* ——— tooltips de itens ——— */
+.tooltip{
+  position:fixed; z-index:9999; pointer-events:none;
+  background:rgba(13,17,22,.96); border:1px solid #2a313b; border-radius:8px;
+  padding:8px 10px; color:#e9eef6; box-shadow:0 8px 24px rgba(0,0,0,.4);
+  min-width:220px; max-width:320px
+}
+.tooltip .t-name{font-weight:800;margin-bottom:4px}
+.tooltip .t-rare{color:#6aa8ff}
+.tooltip .t-legendary{color:#f2c04a}
+.tooltip .t-slot{color:#9fb3cc;font:12px ui-monospace}
+.tooltip ul{margin:6px 0 0 14px;padding:0}
+.tooltip li{margin:2px 0}
+.tooltip .t-lore{margin-top:6px;color:#d9cfb9;font-style:italic;opacity:.92}

@@ -52,3 +52,37 @@ export const itemLabel=it=>it?.name||'Item';
 export const canStack=(a,b)=>a&&b&&a.kind==='potion'&&b.kind==='potion'&&a.potion===b.potion;
 export function stackInto(dst,src){const dc=(dst.count??1), sc=(src.count??1), free=MAX_STACK-dc; if(free<=0)return 0; const mv=Math.min(sc,free); dst.count=dc+mv; src.count=sc-mv; return mv;}
 export function potionHint(it){const m={hp:'Cura 15% HP',mana:'Restaura 15% Mana',str:'+5 STR por 10s',spd:'+5% Velocidade por 10s'};return m[it.potion]||''}
+// ——— Lore/descrição simples por tipo/raridade ———
+export function itemLore(it){
+  if (!it) return '';
+  const rare = it.rarity || 'normal';
+  const pick = (arr)=>arr[Math.floor(Math.random()*arr.length)];
+
+  if (it.kind === 'potion') {
+    const base = {
+      hp:   ['Um aroma ferroso paira no ar.', 'Destilada por monges curandeiros.'],
+      mana: ['Cintila como o azul do Éter.', 'Sussurra segredos antigos.'],
+      str:  ['Forjada em brasas de guerra.', 'Aquece a alma e endurece os punhos.'],
+      spd:  ['Leve como o vento da madrugada.', 'Apressa o passo dos caçadores.']
+    }[it.potion] || ['Um tônico de origem duvidosa.'];
+    return pick(base);
+  }
+
+  const common = [
+    'Fiel companheira de aventureiros esquecidos.',
+    'Cheira a poeira de masmorras antigas.',
+    'Tem marcas de batalha por toda parte.'
+  ];
+  const rareL = [
+    'Sussurra o nome de seus antigos donos.',
+    'Imbuída com um brilho discreto.'
+  ];
+  const leg = [
+    'Dizem que escolhe seu portador.',
+    'Forjada sob um céu sem estrelas.'
+  ];
+
+  if (rare === 'legendary') return pick(leg);
+  if (rare === 'rare') return pick(rareL);
+  return pick(common);
+}
