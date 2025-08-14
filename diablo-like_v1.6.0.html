@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Diablo-like • HTML/Canvas (Isométrico) v1.8.0</title>
+<style>
+  :root{--bg:#0b0d10;--panel:#13161a;--accent:#cc3d3d;--text:#e7e9ee;--muted:#8b909a}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{display:grid;grid-template-columns:1fr 400px;gap:10px;height:100vh;padding:10px}
+  .panel{background:var(--panel);border:1px solid #1e2229;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #1e2229}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  header small{color:var(--muted)}
+  #gamewrap{position:relative}
+  #game{width:100%;height:100%;display:block;background:#0e1116;cursor:none}
+  .hud{position:absolute;left:12px;bottom:12px;display:flex;gap:8px;align-items:end;pointer-events:none}
+  .orb{width:80px;height:80px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#ff7474,#7a1010);border:2px solid #3a0b0b;box-shadow:0 0 24px rgba(204,61,61,.35) inset}
+  .orb.mana{background:radial-gradient(circle at 70% 30%,#7ab6ff,#0b2c7a);border-color:#0b2c7a;box-shadow:0 0 24px rgba(64,132,255,.35) inset}
+  .bar{height:10px;min-width:160px;background:#1b2027;border:1px solid #2a313b;border-radius:99px;overflow:hidden}
+  .bar>i{display:block;height:100%;background:linear-gradient(90deg,#cc3d3d,#8d2525)}
+  .bar.mana>i{background:linear-gradient(90deg,#3d7dcc,#214d8d)}
+  .row{display:flex;gap:10px;align-items:center}
+  .side{padding:12px}
+  .section{padding:10px 12px;border-top:1px solid #1e2229}
+  .kbd{font:600 12px/1 ui-monospace,Menlo,Consolas,monospace;color:#d3d7df;background:#0d1116;border:1px solid #1e2229;border-bottom-width:2px;border-radius:6px;padding:2px 6px}
+  .inv{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;user-select:none}
+  .slot{aspect-ratio:1/1;border:1px dashed #303744;border-radius:8px;background:linear-gradient(180deg,#11161e,#0d1116);position:relative}
+  .item{position:absolute;inset:3px;border-radius:6px;border:1px solid #374355;background:linear-gradient(180deg,#202b39,#0f151d);display:flex;align-items:center;justify-content:center;font:600 12px/1 ui-monospace;color:#a8e7a8;cursor:grab;text-align:center;padding:2px}
+  .item.potion{color:#fff;font-weight:700}
+  .item.hp{background:linear-gradient(180deg,#b63a3a,#6f1a1a)}
+  .item.mana{background:linear-gradient(180deg,#3a6fb6,#17325e)}
+  .item.str{background:linear-gradient(180deg,#c96b2a,#6c3710)}
+  .item.spd{background:linear-gradient(180deg,#33a36a,#125237)}
+  .qty{position:absolute;right:4px;bottom:3px;background:rgba(0,0,0,.55);border:1px solid #1c2430;border-radius:6px;padding:1px 5px;color:#e9eef6;font:700 11px/1 ui-monospace;pointer-events:none}
+  .log{height:140px;overflow:auto;background:#0d1116;border:1px solid #1e2229;border-radius:8px;padding:8px;color:#aeb4bf}
+  .btn{appearance:none;background:#1a212b;border:1px solid #253040;border-radius:8px;color:#e7e9ee;padding:8px 10px;font-weight:600;cursor:pointer}
+  .btn:hover{filter:brightness(1.08)}
+  .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .stat{background:#0e141c;border:1px solid #1d2633;border-radius:8px;padding:8px}
+  .stat small{color:#9fb3cc;margin-left:6px}
+  canvas{image-rendering:crisp-edges;image-rendering:pixelated}
+  .help{color:#c7cbd4}
+  .debug{position:absolute;left:10px;top:50px;pointer-events:none;background:rgba(0,0,0,.45);border:1px solid #1e2229;border-radius:8px;padding:6px 8px;color:#dbe2f0;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;white-space:pre}
+  /* Equipamento */
+  .equip{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;user-select:none}
+  .equip .e-slot{height:64px;border:1px dashed #3a4250;border-radius:10px;background:linear-gradient(180deg,#0f141b,#0b0f15);position:relative;display:flex;align-items:center;justify-content:center}
+  .equip .e-slot.lock{outline:2px dashed #804f4f;outline-offset:-4px}
+  .equip .e-slot .label{position:absolute;bottom:4px;right:6px;color:#8e98a6;font:11px/1 ui-monospace}
+  .equip .e-slot .item{inset:4px}
+  /* Hotbar (não sobrepõe as barras) */
+  .hotbar{position:absolute;left:200px;bottom:44px;display:flex;gap:8px;z-index:5;pointer-events:auto}
+  .hb-slot{width:44px;height:44px;border-radius:8px;border:1px dashed #2c3543;background:linear-gradient(180deg,#0e141b,#0a0e14);position:relative;display:flex;align-items:center;justify-content:center}
+  .hb-slot .key{position:absolute;left:6px;bottom:4px;color:#8e98a6;font:11px/1 ui-monospace}
+  .hb-item{inset:3px;position:absolute;border-radius:6px;border:1px solid #3a4656;display:flex;align-items:center;justify-content:center;font:700 12px/1 ui-monospace;color:#fff;cursor:grab}
+  .hb-item.hp{background:radial-gradient(circle at 30% 30%,#ff7676,#7a1010)}
+  .hb-item.mana{background:radial-gradient(circle at 30% 30%,#7ab6ff,#0b2c7a)}
+  .hb-item.str{background:radial-gradient(circle at 30% 30%,#ffae6b,#7a3f0b)}
+  .hb-item.spd{background:radial-gradient(circle at 30% 30%,#63d8a0,#0c5d3a)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="gamewrap" class="panel">
+    <header>
+      <h1>Diablo-like (Protótipo Isométrico)</h1>
+      <small>WASD • Ctrl+LMB Pan • LMB/RMB Firebolt • Melee (J) • Colisão • Buracos • Iluminação • Equip/Hotbar (stack)</small>
+    </header>
+    <canvas id="game" width="1024" height="720"></canvas>
+    <div id="debug" class="debug"></div>
+
+    <!-- HUD orbs + barras -->
+    <div class="hud">
+      <div class="orb" title="Vida"></div>
+      <div class="orb mana" title="Mana"></div>
+      <div class="row">
+        <div class="bar" style="width:220px"><i id="hpBar" style="width:100%"></i></div>
+        <div class="bar mana" style="width:220px"><i id="manaBar" style="width:100%"></i></div>
+      </div>
+    </div>
+
+    <!-- HOTBAR 1..9 -->
+    <div class="hotbar" id="hotbar"></div>
+  </div>
+
+  <aside class="panel side">
+    <header>
+      <h1>Personagem</h1>
+      <small>Warrior • Nível <span id="lvl">1</span></small>
+    </header>
+
+    <div class="section">
+      <div class="statgrid">
+        <div class="stat">STR <b id="str">10</b><small id="strB"></small></div>
+        <div class="stat">DEX <b id="dex">10</b><small id="dexB"></small></div>
+        <div class="stat">MAG <b id="mag">10</b><small id="magB"></small></div>
+        <div class="stat">VIT <b id="vit">10</b><small id="vitB"></small></div>
+      </div>
+    </div>
+
+    <!-- EQUIPAMENTO -->
+    <div class="section">
+      <div class="row" style="justify-content:space-between;align-items:center"><b>Equipamento</b></div>
+      <div class="equip" id="equip">
+        <div class="e-slot" id="eq_main" data-slot="main"><span class="label">Mão Principal</span></div>
+        <div class="e-slot" id="eq_off" data-slot="off"><span class="label">Mão Secundária</span></div>
+        <div class="e-slot" id="eq_head" data-slot="head"><span class="label">Capacete</span></div>
+        <div class="e-slot" id="eq_chest" data-slot="chest"><span class="label">Torso</span></div>
+        <div class="e-slot" id="eq_legs" data-slot="legs"><span class="label">Pernas</span></div>
+        <div class="e-slot" id="eq_acc" data-slot="acc"><span class="label">Acessório</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <b>Inventário</b>
+        <button class="btn" id="spawnLoot">Gerar loot</button>
+      </div>
+      <div class="inv" id="inv"></div>
+    </div>
+
+    <div class="section">
+      <b>Controles</b>
+      <p class="help">
+        <span class="kbd">Ctrl Esq + LMB</span>: pan •
+        <span class="kbd">LMB</span>: ataque melee •
+        <span class="kbd">RMB</span>: Firebolt •
+        <span class="kbd">J</span>: ataque melee • <span class="kbd">WASD</span>: mover • <span class="kbd">1..9</span>: hotbar
+      </p>
+    </div>
+
+    <div class="section">
+      <b>Console</b>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ===== Util ===== */
+const rand=n=>Math.floor(Math.random()*n);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const choice=arr=>arr[rand(arr.length)];
+const lerp=(a,b,t)=>a+(b-a)*t;
+const isNum=v=>Number.isFinite(v);
+const num=(v,def=0)=>isNum(v)?v:def;
+function uid(){try{if(crypto?.randomUUID) return crypto.randomUUID();}catch{} return 'id-'+Math.random().toString(36).slice(2)}
+class RNG{constructor(seed=Date.now()%2147483647){this.seed=seed} next(){return this.seed=this.seed*48271%2147483647} nextFloat(){return (this.next()-1)/2147483646}}
+function angNorm(a){ a%=Math.PI*2; return (a<=-Math.PI)?a+Math.PI*2:(a>Math.PI)?a-Math.PI*2:a; }
+function angDiff(a,b){ return Math.abs(angNorm(a-b)); } // |Δ| rad
+
+/* ===== Config ===== */
+const MAX_STACK = 99;
+
+/* ===== Mundo ===== */
+const TILE_W=64, TILE_H=32, MAP_W=56, MAP_H=56;
+const FLOOR=1, WALL=2, HOLE=3;
+
+/* ===== Canvas & estado raiz ===== */
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+const debugEl=document.getElementById('debug');
+const origin={x:canvas.width/2,y:60};
+let dungeon, player, enemies=[], groundLoot=[], showGround=false, inv, gameOver=false;
+
+/* ===== Conversões iso ===== */
+function isoToScreen(x,y){x=num(x); y=num(y); return {x:(x-y)*TILE_W/2 + num(origin.x,0), y:(x+y)*TILE_H/2 + num(origin.y,0)}}
+function screenToIso(sx,sy){const x=((sx-num(origin.x,0))/(TILE_W/2)+(sy-num(origin.y,0))/(TILE_H/2))/2, y=((sy-num(origin.y,0))/(TILE_H/2)-(sx-num(origin.x,0))/(TILE_W/2))/2; return {x:Math.floor(x),y:Math.floor(y)}}
+function screenToWorld(sx,sy){const x=((sx-num(origin.x,0))/(TILE_W/2)+(sy-num(origin.y,0))/(TILE_H/2))/2, y=((sy-num(origin.y,0))/(TILE_H/2)-(sx-num(origin.x,0))/(TILE_W/2))/2; return {x,y}}
+function getCenterOriginFor(x,y){x=num(x); y=num(y); const sx=(x-y)*TILE_W/2, sy=(x+y)*TILE_H/2; return {x:canvas.width/2-sx,y:canvas.height/2-sy}}
+function centerCameraOnPlayer(){ if(!player) return; const o=getCenterOriginFor(player.x,player.y); origin.x=o.x; origin.y=o.y}
+function clampOrigin(){ const maxX=canvas.width*0.75, maxY=canvas.height*0.75, minX=-MAP_W*TILE_W, minY=-MAP_H*TILE_H; origin.x=Math.max(minX,Math.min(maxX,num(origin.x,0))); origin.y=Math.max(minY,Math.min(maxY,num(origin.y,0)))}
+
+/* ===== Dungeon ===== */
+function makeDungeon(seed=Date.now()){
+  const rng=new RNG(seed), grid=Array.from({length:MAP_H},()=>Array(MAP_W).fill(WALL)), rooms=[], count=18+Math.floor(rng.nextFloat()*8);
+  for(let i=0;i<count;i++){const w=4+rand(6), h=3+rand(6), x=2+rand(MAP_W-w-4), y=2+rand(MAP_H-h-4); rooms.push({x,y,w,h}); for(let yy=y;yy<y+h;yy++) for(let xx=x;xx<x+w;xx++) grid[yy][xx]=FLOOR}
+  rooms.sort((a,b)=>a.x+a.y-(b.x+b.y));
+  for(let i=1;i<rooms.length;i++){const a=rooms[i-1], b=rooms[i]; const ax=(a.x+a.x+a.w)>>1, ay=(a.y+a.y+a.h)>>1, bx=(b.x+b.x+b.w)>>1, by=(b.y+b.y+b.h)>>1;
+    for(let x=Math.min(ax,bx);x<=Math.max(ax,bx);x++) grid[ay][x]=FLOOR; for(let y=Math.min(ay,by);y<=Math.max(ay,by);y++) grid[y][bx]=FLOOR}
+  for(let pass=0;pass<2;pass++){for(let y=1;y<MAP_H-1;y++) for(let x=1;x<MAP_W-1;x++){let n=0; for(let yy=-1;yy<=1;yy++) for(let xx=-1;xx<=1;xx++) if(grid[y+yy][x+xx]===FLOOR) n++; if(n>=5) grid[y][x]=FLOOR}}
+  return {grid,rooms}
+}
+
+/* ===== Colisão/Buracos ===== */
+function isWallAt(x,y){x=Math.floor(x);y=Math.floor(y); if(x<0||y<0||x>=MAP_W||y>=MAP_H) return true; return dungeon?.grid?.[y]?.[x]===WALL}
+function isHoleAt(x,y){x=Math.floor(x);y=Math.floor(y); if(x<0||y<0||x>=MAP_W||y>=MAP_H) return false; return dungeon?.grid?.[y]?.[x]===HOLE}
+function sprinkleHoles(minDist=6,ch=0.035){ if(!dungeon?.grid) return; for(let y=1;y<MAP_H-1;y++) for(let x=1;x<MAP_W-1;x++){if(dungeon.grid[y][x]!==FLOOR) continue; const d=Math.hypot((x+0.5)-player.x,(y+0.5)-player.y); if(d<minDist) continue; if(Math.random()<ch) dungeon.grid[y][x]=HOLE}}
+function moveWithCollision(e,dx,dy){ if(!e) return; if(!isWallAt(e.x+dx,e.y)) e.x+=dx; if(!isWallAt(e.x,e.y+dy)) e.y+=dy }
+
+/* ===== A* ===== */
+function astar(grid,start,goal){
+  if(!grid) return null;
+  const h=(a,b)=>Math.abs(a.x-b.x)+Math.abs(a.y-b.y), key=p=>p.x+","+p.y;
+  const open=new Set([key(start)]), g=new Map([[key(start),0]]), came=new Map(), f=new Map([[key(start),h(start,goal)]]);
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  while(open.size){
+    let current=null,best=1e9; for(const k of open){const v=f.get(k)??1e9; if(v<best){best=v; current=k}}
+    const [cx,cy]=current.split(',').map(Number);
+    if(cx===goal.x && cy===goal.y){const path=[goal]; let ck=current; while(came.has(ck)){const prev=came.get(ck); const [px,py]=prev.split(',').map(Number); path.push({x:px,y:py}); ck=prev} path.reverse(); return path}
+    open.delete(current);
+    for(const [dx,dy] of dirs){
+      const nx=cx+dx, ny=cy+dy; if(nx<0||ny<0||nx>=MAP_W||ny>=MAP_H) continue; if(grid[ny][nx]===WALL) continue;
+      const nk=nx+","+ny, tentative=(g.get(current)||1e9)+1;
+      if(tentative<(g.get(nk)||1e9)){came.set(nk,current); g.set(nk,tentative); f.set(nk, tentative + h({x:nx,y:ny},goal)); open.add(nk)}
+    }
+  }
+  return null
+}
+
+/* ===== Entidades ===== */
+class Entity{constructor(x,y){this.x=x;this.y=y;this.speed=3.0;this.path=[];this.hp=100;this.maxHp=100;this.baseMaxHp=100;this.mana=60;this.maxMana=60} tile(){return {x:Math.floor(this.x),y:Math.floor(this.y)}}}
+class Player extends Entity{constructor(x,y){super(x,y); this.class='Warrior'; this.stats={str:10,dex:10,mag:10,vit:10}; this.level=1; this.exp=0; this.dead=false; this.facingAngle=0}}
+class Enemy extends Entity{
+  constructor(x,y,t='Skeleton'){
+    super(x,y);
+    this.id = uid();
+    this.type=t; this.color='#c7d1e0';
+    this.hp=40; this.maxHp=40; this.speed=2.6;
+    this.aggro=8; this.damage=6; this.dead=false;
+  }
+}
+
+/* ===== Itens / Loot / Inventário / Equip ===== */
+const PREFIX=["Sturdy","Fine","Cruel","Holy","Cursed","Fiery","Icy"];
+const SUFFIX=["of the Fox","of Might","of Precision","of Magic","of the Bear"];
+const CATALOG = [
+  {kind:'helm', names:['Helm','Cap','Hood'], slot:'head'},
+  {kind:'chest', names:['Armor','Breastplate','Robe'], slot:'chest'},
+  {kind:'legs', names:['Pants','Leggings','Greaves'], slot:'legs'},
+  {kind:'weapon1h', names:['Sword','Dagger','Mace','Wand'], slot:'hand', hands:1},
+  {kind:'weapon2h', names:['Greatsword','Bow','Staff'], slot:'hand', hands:2},
+  {kind:'shield', names:['Shield','Kite Shield'], slot:'off'},
+  {kind:'accessory', names:['Ring','Amulet','Charm'], slot:'acc'}
+];
+function makeBonus(kind, name){
+  const b={str:0,dex:0,mag:0,vit:0,hp:0}, plus=(a,b)=>a+rand(b-a+1);
+  if(kind==='helm'||kind==='chest'||kind==='legs'){ b.hp = plus(12,30); if(rand(100)<35) b.vit += plus(1,3); }
+  if(kind==='shield'){ b.hp = plus(8,20); if(rand(100)<40) b.vit += plus(1,2); }
+  if(kind==='weapon1h'){ if(name.includes('Sword')||'Mace') b.str += rand(6)+3; if(name.includes('Dagger')) b.dex += rand(6)+3; if(name.includes('Wand')) b.mag += rand(6)+3; }
+  if(kind==='weapon2h'){ if(name.includes('Greatsword')) b.str += rand(8)+8; if(name.includes('Bow')) b.dex += rand(8)+8; if(name.includes('Staff')) b.mag += rand(8)+8; }
+  if(kind==='accessory'){ const stat=choice(['str','dex','mag','vit']); b[stat]+=rand(5)+2; if(rand(100)<25) b.hp+=rand(9)+6; }
+  return b;
+}
+function rollEquip(){
+  const cat = choice(CATALOG), t = choice(cat.names);
+  const name = (rand(100)<65? choice(PREFIX)+" ":"") + t + (rand(100)<65? " "+choice(SUFFIX):"");
+  const rarity = rand(100)<5? 'legendary' : rand(100)<20? 'rare' : 'normal';
+  const stats={ dmg: cat.kind.startsWith('weapon') ? (3+rand(7)) : 0, ac: (['helm','chest','legs','shield'].includes(cat.kind)) ? (1+rand(6)) : 0 };
+  const bonus = makeBonus(cat.kind, t);
+  return {id:uid(), name, rarity, stats, size:1, kind:cat.kind, bonus, equip:{slot:cat.slot, hands:cat.hands||0}};
+}
+
+/* === Utilizáveis (Poções) — com stack === */
+function rollPotion(){
+  const type = choice(['hp','mana','str','spd']);
+  const map = {hp:['Health Potion','hp'], mana:['Mana Potion','mana'], str:['Might Potion','str'], spd:['Haste Potion','spd']};
+  const [nm, cls] = map[type];
+  return {id:uid(), name:nm, rarity:'consumable', size:1, kind:'potion', potion:type, cls, count:1};
+}
+function isUsable(it){ return it && it.kind==='potion'; }
+function rollItem(){ return Math.random()<0.65 ? rollEquip() : rollPotion(); }
+
+/* ===== Inventário (com stack) ===== */
+function canStack(a,b){ return a&&b && a.kind==='potion' && b.kind==='potion' && a.potion===b.potion; }
+function stackInto(dst, src){
+  const dstCount = (dst.count??1), srcCount = (src.count??1);
+  const free = MAX_STACK - dstCount;
+  if(free<=0) return 0;
+  const move = Math.min(srcCount, free);
+  dst.count = dstCount + move;
+  src.count = srcCount - move;
+  return move;
+}
+function itemLabel(it){ return it?.name || 'Item'; }
+
+class Inventory{
+  constructor(cols=8,rows=4){ this.cols=cols; this.rows=rows; this.slots=Array(cols*rows).fill(null); this.el=document.getElementById('inv'); this.render(); }
+  firstEmpty(){return this.slots.findIndex(x=>!x)}
+  add(it){
+    if(isUsable(it)){
+      const idx=this.slots.findIndex(x=>canStack(x,it) && (x.count??1)<MAX_STACK);
+      if(idx>=0){ const moved=stackInto(this.slots[idx], it); if(moved>0){ this.render(); return true; } }
+    }
+    const i=this.firstEmpty(); if(i>=0){ this.slots[i]=it; this.render(); return true } return false
+  }
+  render(){
+    this.el.innerHTML=''; this.el.style.gridTemplateColumns=`repeat(${this.cols},1fr)`;
+    this.slots.forEach((it,idx)=>{
+      const s=document.createElement('div'); s.className='slot'; s.dataset.idx=idx;
+
+      if(it){
+        const d=document.createElement('div'); d.className='item';
+        if(isUsable(it)){ d.classList.add('potion', it.potion); d.textContent=' '; } else { d.textContent=itemLabel(it); }
+        d.draggable=true; d.title = it.bonus ? bonusToText(it.bonus) : (isUsable(it)? potionHint(it):'');
+        d.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain', JSON.stringify({type:'inv', index:idx})); });
+        s.appendChild(d);
+
+        if(isUsable(it)){
+          const q=document.createElement('span'); q.className='qty'; q.textContent=String(it.count??1); s.appendChild(q);
+        }
+      }
+
+      s.addEventListener('dragover',e=>e.preventDefault());
+      s.addEventListener('drop',e=>{
+        e.preventDefault();
+        let payload; const txt=e.dataTransfer.getData('text/plain'); try{ payload=JSON.parse(txt) }catch{ payload={type:'inv', index:+txt} }
+        if(payload.type==='inv'){
+          const from=payload.index, src=this.slots[from], dst=this.slots[idx];
+          if(!src) return;
+
+          if(dst && canStack(dst, src)){
+            const moved=stackInto(dst, src);
+            if(moved>0){ if((src.count??1)<=0) this.slots[from]=null; this.render(); renderHotbar(); log(`Somou ${moved}x ${itemLabel(dst)} no slot ${idx}`); return; }
+          }
+
+          [this.slots[from],this.slots[idx]]=[this.slots[idx],this.slots[from]];
+          this.render(); renderEquipment(); applyAllBonuses(); renderHotbar(); log(`Moveu item para slot ${idx}`);
+        }
+        else if(payload.type==='equip'){
+          if(this.slots[idx]){
+            const dst=this.slots[idx];
+            const it = unequipFrom(payload.slot);
+            if(!it) return;
+            if(canStack(dst,it)){
+              const moved=stackInto(dst,it);
+              if(moved>0){ renderEquipment(); applyAllBonuses(); this.render(); log(`Somou ${moved}x ${itemLabel(dst)} com o drop do equip`); return; }
+            }
+            log('Slot de inventário ocupado.');
+            inv.add(it);
+            return;
+          }
+          const it = unequipFrom(payload.slot);
+          if(it){ this.slots[idx]=it; this.render(); renderEquipment(); applyAllBonuses(); log(`Removeu ${it.name} do ${payload.slot} para o inventário`); }
+        }
+        else if(payload.type==='hb'){
+          const hIdx=payload.index, src=hotbar[hIdx]; if(!src) return;
+          const dst=this.slots[idx];
+          if(!dst){ this.slots[idx]=src; hotbar[hIdx]=null; this.render(); renderHotbar(); log(`Moveu ${itemLabel(src)} da barra para o inventário`); return; }
+          if(canStack(dst,src)){
+            const moved=stackInto(dst,src);
+            if((src.count??1)<=0) hotbar[hIdx]=null;
+            this.render(); renderHotbar();
+            log(`Somou ${moved}x ${itemLabel(dst)} da barra no slot ${idx}`);
+          }else{
+            log('Slot de inventário ocupado.');
+          }
+        }
+      });
+
+      this.el.appendChild(s);
+    });
+  }
+}
+
+/* ===== Helpers de bônus ===== */
+function sumBonuses(a,b){return {str:(a.str||0)+(b.str||0), dex:(a.dex||0)+(b.dex||0), mag:(a.mag||0)+(b.mag||0), vit:(a.vit||0)+(b.vit||0), hp:(a.hp||0)+(b.hp||0)}}
+function zeroBonus(){return {str:0,dex:0,mag:0,vit:0,hp:0}}
+function bonusToText(b){const parts=[]; if(b.str) parts.push(`STR +${b.str}`); if(b.dex) parts.push(`DEX +${b.dex}`); if(b.mag) parts.push(`MAG +${b.mag}`); if(b.vit) parts.push(`VIT +${b.vit}`); if(b.hp) parts.push(`HP +${b.hp}`); return parts.join(' • ')}
+function potionHint(it){ if(!isUsable(it)) return ''; const m={hp:'Cura 15% HP', mana:'Restaura 15% Mana', str:'+5 STR por 10s', spd:'+5% Velocidade por 10s'}; return m[it.potion]||''; }
+
+/* ===== Render ===== */
+function computeLight(){
+  const light=Array.from({length:MAP_H},()=>Array(MAP_W).fill(0));
+  const radius=9, px=num(player?.x, MAP_W/2), py=num(player?.y, MAP_H/2);
+  for(let y=0;y<MAP_H;y++) for(let x=0;x<MAP_W;x++){
+    const d=Math.hypot(x+0.5-px,y+0.5-py), v=clamp(1-d/radius,0,1); light[y][x]=v*v;
+  }
+  return light;
+}
+function drawTile(x,y,shade){
+  shade=isNum(shade)?shade:0.4;
+  const {x:sx,y:sy}=isoToScreen(x,y);
+  ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx+TILE_W/2,sy+TILE_H/2); ctx.lineTo(sx,sy+TILE_H); ctx.lineTo(sx-TILE_W/2,sy+TILE_H/2); ctx.closePath();
+  const base=40, l=Math.floor(lerp(base,160,shade)); ctx.fillStyle=`rgb(${l-8|0},${l|0},${(l+6)|0})`; ctx.fill();
+  if(dungeon?.grid?.[y]?.[x]===HOLE){ ctx.save(); ctx.beginPath(); ctx.ellipse(sx,sy+TILE_H/2,TILE_W*0.24,TILE_H*0.24,0,0,Math.PI*2); ctx.fillStyle='#080a0e'; ctx.fill(); ctx.beginPath(); ctx.ellipse(sx,sy+TILE_H/2,TILE_W*0.18,TILE_H*0.18,0,0,Math.PI*2); ctx.fillStyle='#000'; ctx.fill(); ctx.restore(); }
+  if(dungeon?.grid?.[y]?.[x]===WALL){
+    ctx.fillStyle=`rgb(${l-30|0},${l-28|0},${l-26|0})`;
+    ctx.beginPath(); ctx.moveTo(sx-TILE_W/2,sy+TILE_H/2); ctx.lineTo(sx-TILE_W/2,sy+TILE_H/2-24); ctx.lineTo(sx,sy-24); ctx.lineTo(sx,sy); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(sx+TILE_W/2,sy+TILE_H/2); ctx.lineTo(sx+TILE_W/2,sy+TILE_H/2-24); ctx.lineTo(sx,sy-24); ctx.lineTo(sx,sy); ctx.closePath(); ctx.fillStyle=`rgb(${l-40|0},${l-36|0},${l-34|0})`; ctx.fill();
+  }
+}
+function drawEnemy(e,shade){ const {x:sx,y:sy}=isoToScreen(e.x,e.y); ctx.beginPath(); ctx.arc(sx,sy+10,10,0,Math.PI*2); ctx.fillStyle='#c7d1e0'; ctx.globalAlpha=clamp(.35+shade*.7,0.2,1); ctx.fill(); ctx.globalAlpha=1 }
+function drawHpBar(e){ const {x:sx,y:sy}=isoToScreen(e.x,e.y); const w=28,h=4,p=Math.max(0,e.hp/e.maxHp); ctx.fillStyle='#1b2027'; ctx.fillRect(sx-w/2,sy-4,w,h); ctx.fillStyle='#cc3d3d'; ctx.fillRect(sx-w/2,sy-4,w*p,h) }
+
+/* Player direcional (shape triangular) */
+function drawPlayerDirectional(p){
+  const base=isoToScreen(p.x,p.y);
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(base.x,base.y+10,12,6,0,0,Math.PI*2); ctx.fill();
+  const a=p.facingAngle||0, fwdR=0.6, sideR=0.35, backR=0.25;
+  const noseW={x:p.x+Math.cos(a)*fwdR,y:p.y+Math.sin(a)*fwdR};
+  const leftW={x:p.x+Math.cos(a+Math.PI*0.75)*sideR,y:p.y+Math.sin(a+Math.PI*0.75)*sideR};
+  const rightW={x:p.x+Math.cos(a-Math.PI*0.75)*sideR,y:p.y+Math.sin(a-Math.PI*0.75)*sideR};
+  const tailW={x:p.x-Math.cos(a)*backR,y:p.y-Math.sin(a)*backR};
+  const nose=isoToScreen(noseW.x,noseW.y), left=isoToScreen(leftW.x,leftW.y), right=isoToScreen(rightW.x,rightW.y), tail=isoToScreen(tailW.x,tailW.y);
+  ctx.beginPath(); ctx.moveTo(tail.x,tail.y); ctx.lineTo(left.x,left.y); ctx.lineTo(nose.x,nose.y); ctx.lineTo(right.x,right.y); ctx.closePath();
+  ctx.fillStyle='#ffd66b'; ctx.strokeStyle='#7b5d1a'; ctx.lineWidth=2; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo((tail.x+nose.x)/2,(tail.y+nose.y)/2); ctx.lineTo(nose.x,nose.y); ctx.strokeStyle='#b78b2a'; ctx.lineWidth=2; ctx.stroke();
+  ctx.restore();
+}
+
+/* ===== Input & câmera ===== */
+let mouse={x:0,y:0}, keys={w:false,a:false,s:false,d:false};
+let isDragging=false, didPan=false, panMode=false, dragStart={x:0,y:0}, originStart={x:0,y:0};
+const DRAG_THRESHOLD=8;
+
+canvas.addEventListener('mousemove',e=>{
+  const r=canvas.getBoundingClientRect(); mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top;
+  if(isDragging){const dx=e.clientX-dragStart.x, dy=e.clientY-dragStart.y; if(!didPan && Math.hypot(dx,dy)>DRAG_THRESHOLD) didPan=true; if(didPan){origin.x=originStart.x+dx; origin.y=originStart.y+dy; clampOrigin();}}
+});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+canvas.addEventListener('mousedown',e=>{
+  if(e.button===2){ // RMB = Firebolt (alternativo)
+    castFireboltAtScreen(e.offsetX,e.offsetY); 
+    return;
+  }
+  if(e.button===0){
+    panMode = e.ctrlKey; // Ctrl+LMB ativa pan
+    if(panMode){
+      isDragging=true; didPan=false;
+      dragStart={x:e.clientX,y:e.clientY}; originStart={x:origin.x,y:origin.y};
+    } else {
+      didPan=false; // clique simples -> melee no mouseup
+    }
+  }
+});
+
+canvas.addEventListener('mouseup',e=>{
+  if(e.button!==0) return;
+  const wasPan = panMode;
+  // finalizar estado de pan (se estava ativo)
+  if(wasPan){
+    isDragging=false; didPan=false; panMode=false;
+    return;
+  }
+  // se não era pan, usar clique como ataque
+  if(gameOver) return;
+  meleeAttack();
+});
+
+canvas.addEventListener('mouseleave',()=>{isDragging=false; didPan=false; panMode=false;});
+
+document.addEventListener('keydown',e=>{
+  if(gameOver) return;
+  const k=e.key.toLowerCase();
+  if(['w','a','s','d'].includes(k)){e.preventDefault(); keys[k]=true; player.path=[];}
+  if(e.code && /^Digit[1-9]$/.test(e.code)){ const idx=+e.code.slice(5)-1; e.preventDefault(); useHotbar(idx); }
+  if(k==='j'){ e.preventDefault(); meleeAttack(); }
+  if(k==='i'){showGround=!showGround;}
+  if(k==='r'){resetGame('Reinício manual');}
+});
+document.addEventListener('keyup',e=>{const k=e.key.toLowerCase(); if(['w','a','s','d'].includes(k)){e.preventDefault(); keys[k]=false;}});
+
+/* ===== Magias ===== */
+const projectiles=[];
+function castFireboltWorld(wx,wy){
+  if(player.mana<6){log('Mana insuficiente'); return;}
+  player.mana-=6;
+  const dir={x:wx-player.x,y:wy-player.y}, len=Math.hypot(dir.x,dir.y)||1; dir.x/=len; dir.y/=len;
+  player.facingAngle=Math.atan2(dir.y,dir.x);
+  projectiles.push({x:player.x,y:player.y,dx:dir.x*12/60,dy:dir.y*12/60,ttl:1.2,dmg:18});
+}
+function castFireboltAtScreen(sx,sy){const w=screenToWorld(sx,sy); castFireboltWorld(w.x,w.y)}
+function castFirebolt(tile){castFireboltWorld(tile.x+0.5,tile.y+0.5)}
+
+/* ===== Melee ===== */
+const slashes = []; // {x,y,angle,range,arc,ttl,t,hit:Set}
+let meleeCD = 0;
+function meleeAttack(){
+  if(meleeCD>0 || gameOver) return;
+  const angle = player.facingAngle || 0;
+  slashes.push({ x: player.x, y: player.y, angle, range: 2.0, arc: (50*Math.PI/180), ttl: 0.18, t: 0, hit: new Set() });
+  meleeCD = 0.35;
+}
+
+/* ===== Raycast simples p/ LOS ===== */
+function lineClear(ax,ay,bx,by){
+  const steps = Math.ceil(Math.hypot(bx-ax,by-ay)/0.2);
+  for(let i=1;i<=steps;i++){
+    const t=i/steps, x=ax+(bx-ax)*t, y=ay+(by-ay)*t;
+    if(isWallAt(x,y)) return false;
+  }
+  return true;
+}
+
+/* ===== Loot no chão ===== */
+function scatterLoot(n=14){ groundLoot=[]; if(!dungeon?.grid) return; for(let i=0;i<n;i++){const x=rand(MAP_W), y=rand(MAP_H); if(dungeon.grid[y][x]!==FLOOR) continue; groundLoot.push({x:x+0.5,y:y+0.5,item:rollItem()});}}
+
+/* ===== Mortes & drops ===== */
+const deathQueue=[];
+function dropLootAt(x,y,count=1){
+  count=Math.max(1,Math.min(2,count));
+  const tx=Math.floor(x), ty=Math.floor(y);
+  const cand=[[tx,ty],[tx+1,ty],[tx-1,ty],[tx,ty+1],[tx,ty-1],[tx+1,ty+1],[tx-1,ty-1],[tx+1,ty-1],[tx-1,ty+1]];
+  for(let c=0;c<count;c++){let placed=false; for(const [cx,cy] of cand){if(cx<0||cy<0||cx>=MAP_W||cy>=MAP_H) continue; if(dungeon?.grid?.[cy]?.[cx]!==FLOOR) continue; groundLoot.push({x:cx+0.5,y:cy+0.5,item:rollItem()}); placed=true; break;} if(!placed) groundLoot.push({x:tx+0.5,y:ty+0.5,item:rollItem()});}
+}
+function enqueueDeath(en){if(en.dead) return; en.dead=true; deathQueue.push(en)}
+function processDeaths(){while(deathQueue.length){const en=deathQueue.pop(); const idx=enemies.indexOf(en); if(idx>=0) enemies.splice(idx,1); dropLootAt(en.x,en.y,1+rand(2)); player.exp+=15; log('Inimigo derrotado.')}}
+
+/* ===== Equipamentos ===== */
+const equip = {head:null, chest:null, legs:null, main:null, off:null, acc:null, twoHand:false};
+function canEquip(item, slot){
+  if(!item || !item.equip) return false;
+  const k=item.kind;
+  if(slot==='head') return k==='helm';
+  if(slot==='chest') return k==='chest';
+  if(slot==='legs') return k==='legs';
+  if(slot==='acc')   return k==='accessory';
+  if(slot==='main'){ return (k==='weapon2h'||k==='weapon1h'); }
+  if(slot==='off'){ if(equip.twoHand) return false; return (k==='shield'||k==='weapon1h'); }
+  return false;
+}
+function unequipFrom(slot){
+  let it=null;
+  if(slot==='main'){ it=equip.main; equip.main=null; if(equip.twoHand){ equip.twoHand=false; } }
+  else { it=equip[slot]; equip[slot]=null; }
+  renderEquipment(); applyAllBonuses();
+  return it;
+}
+function tryMoveToInventory(it){ const i=inv.firstEmpty(); if(i<0) return false; inv.slots[i]=it; inv.render(); return true; }
+function equipFromInventory(index, slot){
+  const it=inv.slots[index]; if(!it) return false; if(!canEquip(it, slot)){ log('Item não é compatível com esse slot.'); return false; }
+  if(slot==='main'){
+    if(it.kind==='weapon2h'){ if(equip.off){ if(!tryMoveToInventory(equip.off)){ log('Inventário cheio para mover item da mão secundária.'); return false; } equip.off=null; } equip.twoHand=true; }
+    else{ if(equip.twoHand){ if(equip.main && !tryMoveToInventory(equip.main)){ log('Inventário cheio para remover arma 2M.'); return false; } equip.main=null; equip.twoHand=false; } }
+    if(equip.main){ if(!tryMoveToInventory(equip.main)){ log('Inventário cheio para mover item da mão principal.'); return false; } }
+    equip.main = it; inv.slots[index]=null; inv.render(); renderEquipment(); applyAllBonuses(); log(`Equipou ${it.name} em Mão Principal`); return true;
+  }
+  if(slot==='off'){
+    if(equip.twoHand){ log('Mão secundária bloqueada por arma de duas mãos.'); return false; }
+    if(it.kind==='weapon2h'){ log('Arma de duas mãos só vai na mão principal.'); return false; }
+    if(equip.off){ if(!tryMoveToInventory(equip.off)){ log('Inventário cheio para mover item da mão secundária.'); return false; } }
+    equip.off = it; inv.slots[index]=null; inv.render(); renderEquipment(); applyAllBonuses(); log(`Equipou ${it.name} em Mão Secundária`); return true;
+  }
+  if(equip[slot]){ if(!tryMoveToInventory(equip[slot])){ log('Inventário cheio para mover item equipado.'); return false; } }
+  equip[slot]=it; inv.slots[index]=null; inv.render(); renderEquipment(); applyAllBonuses(); log(`Equipou ${it.name} em ${slot}`); return true;
+}
+function renderEquipment(){
+  const slots=['main','off','head','chest','legs','acc'];
+  for(const s of slots){
+    const el=document.getElementById('eq_'+s);
+    const labelText=(el.querySelector('.label')?.textContent)||el?.dataset?.slot||s;
+    el.innerHTML = `<span class="label">${labelText}</span>`;
+    el.classList.toggle('lock', s==='off' && equip.twoHand);
+    const it=equip[s];
+    if(it){ const d=document.createElement('div'); d.className='item'; d.textContent=it.name; d.draggable=true; d.title = it.bonus ? bonusToText(it.bonus) : ''; d.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain', JSON.stringify({type:'equip', slot:s})) }); el.appendChild(d); }
+    el.ondragover=(e)=>e.preventDefault();
+    el.ondrop=(e)=>{
+      e.preventDefault();
+      let payload; try{ payload=JSON.parse(e.dataTransfer.getData('text/plain')) }catch{ payload=null }
+      if(!payload) return;
+      if(payload.type==='inv'){ equipFromInventory(payload.index, s); }
+      else if(payload.type==='equip'){
+        const from=payload.slot; if(!equip[from]) return; if(!canEquip(equip[from], s)){ log('Esse item não pode ir para esse slot.'); return; }
+        if(s==='main' && equip[from].kind==='weapon2h'){ if(equip.off){ if(!tryMoveToInventory(equip.off)){ log('Inventário cheio para liberar off.'); return; } equip.off=null; } equip.twoHand=true; }
+        if(s==='off'){ if(equip.twoHand){ log('Mão secundária bloqueada por arma de duas mãos.'); return; } if(equip[from].kind==='weapon2h'){ log('Arma 2M não cabe na mão secundária.'); return; } }
+        const tmp=equip[s]; equip[s]=equip[from]; equip[from]=tmp||null;
+        if(from==='main' && equip.twoHand && equip.main && equip.main.kind!=='weapon2h') equip.twoHand=false;
+        renderEquipment(); applyAllBonuses(); log(`Movido ${equip[s].name} para ${s}`);
+      }
+    }
+  }
+}
+
+/* ===== Buffs temporários ===== */
+const buffs=[];
+function addBuff(type, amount, seconds){ buffs.push({type,amount,t:seconds}); applyAllBonuses(); }
+function updateBuffs(dt){ let changed=false; for(let i=buffs.length-1;i>=0;i--){buffs[i].t-=dt; if(buffs[i].t<=0){buffs.splice(i,1); changed=true;}} if(changed) applyAllBonuses(); }
+function getBuffBonuses(){ let b=zeroBonus(); for(const buff of buffs){ if(buff.type==='str') b.str += Math.round(buff.amount); } return b; }
+function getSpeedMultiplier(){ let mul=1; for(const buff of buffs){ if(buff.type==='spd') mul += buff.amount; } return mul; }
+
+/* ===== Bônus aplicados ===== */
+function getEquipBonuses(){ let acc=zeroBonus(); for(const k of ['head','chest','legs','main','off','acc']){ const it=equip[k]; if(it && it.bonus) acc=sumBonuses(acc,it.bonus); } return acc; }
+function getTotalBonuses(){ return sumBonuses(getEquipBonuses(), getBuffBonuses()); }
+function applyAllBonuses(){
+  const b = getTotalBonuses();
+  player.maxHp = num(player.baseMaxHp,100) + (b.hp||0) + (b.vit||0)*5;
+  if(player.hp>player.maxHp) player.hp=player.maxHp;
+  setStatText('str', player.stats.str, (b.str||0));
+  setStatText('dex', player.stats.dex, (b.dex||0));
+  setStatText('mag', player.stats.mag, (b.mag||0));
+  setStatText('vit', player.stats.vit, (b.vit||0));
+}
+function setStatText(id, base, bonus){ document.getElementById(id).textContent=String(base); document.getElementById(id+'B').textContent = bonus ? `( +${bonus} )` : ''; }
+
+/* ===== Hotbar (com stack) ===== */
+const hotbar = Array(9).fill(null);
+const hotbarEl = document.getElementById('hotbar');
+
+function renderHotbar(){
+  hotbarEl.innerHTML='';
+  for(let i=0;i<9;i++){
+    const s=document.createElement('div'); s.className='hb-slot'; s.dataset.idx=i;
+    const k=document.createElement('div'); k.className='key'; k.textContent=String(i+1); s.appendChild(k);
+    const it=hotbar[i];
+    if(it){
+      const d=document.createElement('div'); d.className='hb-item ' + (it.potion||''); d.draggable=true; d.textContent=' ';
+      d.title = potionHint(it);
+      d.addEventListener('dragstart',e=>{ e.dataTransfer.setData('text/plain', JSON.stringify({type:'hb', index:i})); });
+      s.appendChild(d);
+      const q=document.createElement('span'); q.className='qty'; q.textContent=String(it.count??1); s.appendChild(q);
+    }
+    s.addEventListener('dragover',e=>e.preventDefault());
+    s.addEventListener('drop',e=>{
+      e.preventDefault();
+      let payload; try{ payload=JSON.parse(e.dataTransfer.getData('text/plain')) }catch{ payload=null }
+      if(!payload) return;
+
+      if(payload.type==='inv'){
+        const idx=payload.index; const src=inv.slots[idx];
+        if(!isUsable(src)){ log('A hotbar aceita apenas poções.'); return; }
+        if(!hotbar[i]){ hotbar[i]=src; inv.slots[idx]=null; inv.render(); renderHotbar(); log(`Colocou ${itemLabel(src)} na barra ${i+1}`); return; }
+        if(canStack(hotbar[i], src)){
+          const moved=stackInto(hotbar[i], src);
+          if((src.count??1)<=0) inv.slots[idx]=null;
+          inv.render(); renderHotbar();
+          log(`Somou ${moved}x ${itemLabel(hotbar[i])} na barra ${i+1}`);
+        }else{
+          [hotbar[i], inv.slots[idx]] = [src, hotbar[i]];
+          inv.render(); renderHotbar(); log(`Trocou conteúdo com o slot ${idx} do inventário`);
+        }
+      }else if(payload.type==='hb'){
+        const from=payload.index;
+        if(from===i) return;
+        if(hotbar[from] && hotbar[i] && canStack(hotbar[i], hotbar[from])){
+          const moved=stackInto(hotbar[i], hotbar[from]);
+          if((hotbar[from].count??1)<=0) hotbar[from]=null;
+        }else{
+          [hotbar[from], hotbar[i]] = [hotbar[i], hotbar[from]];
+        }
+        renderHotbar();
+      }
+    });
+    s.addEventListener('click',()=>useHotbar(i));
+    hotbarEl.appendChild(s);
+  }
+}
+
+function useHotbar(i){
+  const it=hotbar[i]; if(!it) return;
+  if(useUsable(it)){
+    it.count = (it.count??1)-1;
+    if(it.count<=0) hotbar[i]=null;
+    renderHotbar();
+  }
+}
+
+function removeFromHotbar(i){ const it=hotbar[i]; hotbar[i]=null; renderHotbar(); return it; }
+
+/* ===== Follow da câmera ===== */
+function updateCameraFollow(dt){
+  if(isDragging) return;
+  const movingWASD=(keys.w||keys.a||keys.s||keys.d), movingPath=(player.path&&player.path.length>0);
+  if(!(movingWASD||movingPath)) return;
+  const target=getCenterOriginFor(player.x,player.y), alpha=Math.min(1,dt*6);
+  origin.x+=(target.x-origin.x)*alpha; origin.y+=(target.y-origin.y)*alpha; clampOrigin();
+}
+
+/* ===== Loop ===== */
+let last=0;
+function validateState(){ return !!(dungeon && Array.isArray(dungeon.grid) && dungeon.grid.length===MAP_H && dungeon.grid[0]?.length===MAP_W && isNum(player?.x) && isNum(player?.y)); }
+function repairState(){ dungeon=makeDungeon(); if(!player) player=new Player(10,10); placePlayer(); sprinkleHoles(); scatterLoot(); spawnEnemies(); centerCameraOnPlayer(); clampOrigin(); }
+function step(ts){
+  const dt=(ts-last)/1000 || 0; last=ts;
+  try{
+    if(!validateState()) repairState();
+    update(dt); render();
+  }catch(e){ console.error(e); log('Erro no frame: '+e.message); repairState(); }
+  requestAnimationFrame(step);
+}
+
+/* ===== Update/Render ===== */
+function update(dt){
+  if(gameOver) return;
+  updateBuffs(dt);
+
+  // cooldown e processamento do melee
+  if(meleeCD>0) meleeCD = Math.max(0, meleeCD-dt);
+  for(let i=slashes.length-1;i>=0;i--){
+    const s=slashes[i]; s.t += dt;
+    enemies.forEach(en=>{
+      if(en.dead) return;
+      if(s.hit.has(en.id)) return;
+      const dx=en.x - s.x, dy=en.y - s.y;
+      const dist=Math.hypot(dx,dy);
+      if(dist> s.range) return;
+      const ang=Math.atan2(dy,dx);
+      if(angDiff(ang, s.angle) > s.arc*0.5) return;
+      if(!lineClear(s.x, s.y, en.x, en.y)) return;
+      const b=getTotalBonuses();
+      const dmg = 12 + Math.floor((player.stats.str + (b.str||0))*0.5);
+      en.hp -= dmg;
+      s.hit.add(en.id);
+      if(en.hp<=0) enqueueDeath(en);
+    });
+    if(s.t >= s.ttl) slashes.splice(i,1);
+  }
+
+  // movimento
+  const vx=(keys.d?1:0)-(keys.a?1:0), vy=(keys.s?1:0)-(keys.w?1:0);
+  const speedMul=getSpeedMultiplier();
+  if(vx||vy){
+    const len=Math.hypot(vx,vy)||1;
+    moveWithCollision(player,(vx/len)*player.speed*speedMul*dt,(vy/len)*player.speed*speedMul*dt);
+    player.path=[]; player.attackTarget=null;
+  } else if(player.path && player.path.length){
+    const next=player.path[0], dx=next.x+0.5-player.x, dy=next.y+0.5-player.y, d=Math.hypot(dx,dy);
+    if(d<0.02){player.x=next.x+0.5; player.y=next.y+0.5; player.path.shift()} else {const sp=player.speed*speedMul; player.x+=(dx/d)*sp*dt; player.y+=(dy/d)*sp*dt;}
+  }
+
+  // buraco
+  if(isHoleAt(player.x,player.y)) dieInHole();
+
+  // (auto) melee antigo quando colado ao alvo — mantido
+  if(player.attackTarget){const tg=player.attackTarget; if(tg && !tg.dead){const d=Math.hypot(tg.x-player.x,tg.y-player.y);
+    if(d<0.9 && Math.random()<0.9*dt){ const b=getTotalBonuses(); const dmg = 10 + Math.floor((player.stats.str + (b.str||0))*0.4); tg.hp-=dmg; if(tg.hp<=0){enqueueDeath(tg); player.attackTarget=null} } } }
+
+  // IA inimigos
+  enemies.forEach(en=>{ if(en.dead) return; const dx=player.x-en.x, dy=player.y-en.y, d=Math.hypot(dx,dy);
+    if(d<en.aggro){ const sp=en.speed; en.x+=(dx/d)*sp*dt; en.y+=(dy/d)*sp*dt; if(d<0.9 && Math.random()<0.7*dt){player.hp-=en.damage; if(player.hp<0) player.hp=0;} } });
+
+  // projéteis
+  for(let i=projectiles.length-1;i>=0;i--){const p=projectiles[i]; p.x+=p.dx; p.y+=p.dy; p.ttl-=dt; if(p.ttl<=0){projectiles.splice(i,1); continue;}
+    enemies.forEach(en=>{ if(en.dead) return; if(Math.hypot(en.x-p.x,en.y-p.y)<0.6){ const b=getTotalBonuses(); const spellDmg = p.dmg + Math.floor((player.stats.mag + (b.mag||0))*0.3); en.hp-=spellDmg; p.ttl=0; if(en.hp<=0) enqueueDeath(en); } });
+  }
+
+  // pegar loot
+  for(let i=groundLoot.length-1;i>=0;i--){const g=groundLoot[i]; if(Math.hypot(g.x-player.x,g.y-player.y)<0.6){ if(inv.add(g.item)){groundLoot.splice(i,1); log(`Pegou ${g.item.name}${isUsable(g.item)?' x'+(g.item.count??1):''}`)} }}
+
+  // regen e follow
+  player.mana=clamp(player.mana+2*dt,0,player.maxMana);
+  processDeaths(); updateCameraFollow(dt);
+
+  // barras
+  document.getElementById('hpBar').style.width=(player.hp/player.maxHp*100).toFixed(1)+'%';
+  document.getElementById('manaBar').style.width=(player.mana/player.maxMana*100).toFixed(1)+'%';
+  document.getElementById('lvl').textContent=player.level;
+
+  // nível
+  while(player.exp>=100){player.exp-=100; player.level++; player.stats.str++; player.baseMaxHp+=10; applyAllBonuses(); player.hp=player.maxHp; log('Subiu de nível! +STR, +HP base')}
+
+  // NOVO: rotação contínua do player para o ponteiro
+  const w=screenToWorld(mouse.x,mouse.y), rx=w.x-player.x, ry=w.y-player.y;
+  if(Math.abs(rx)+Math.abs(ry)>1e-5){ player.facingAngle=Math.atan2(ry,rx); }
+}
+
+function render(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const light=computeLight();
+  for(let y=0;y<MAP_H;y++) for(let x=0;x<MAP_W;x++){ const shade=(dungeon?.grid?.[y]?.[x]!==WALL) ? light[y][x] : 0.35; drawTile(x,y,shade) }
+  groundLoot.forEach(g=>{const l=light[Math.floor(g.y)]?.[Math.floor(g.x)]??0; const s=isoToScreen(g.x,g.y); if(l>0.05){ctx.fillStyle='#a8e7a8'; ctx.fillRect(s.x-3,s.y+8,6,6); if(showGround){ctx.fillStyle='#cfe8cf'; ctx.fillText(g.item.name,s.x-20,s.y)}}});
+  enemies.forEach(e=>{ if(e.dead) return; const shade=light[Math.floor(e.y)]?.[Math.floor(e.x)]??0; if(shade>0.05){ drawEnemy(e,shade); drawHpBar(e); } });
+  if(player) drawPlayerDirectional(player);
+
+  // melee wedges
+  slashes.forEach(s=>{
+    const p=isoToScreen(s.x, s.y);
+    const life = 1 - (s.t/s.ttl);
+    const steps=10;
+    const start = s.angle - s.arc*0.5;
+    const end   = s.angle + s.arc*0.5;
+
+    ctx.save();
+    ctx.globalAlpha = 0.25 + life*0.25;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y+8);
+    for(let i=0;i<=steps;i++){
+      const a = start + (end-start)*(i/steps);
+      const wx = s.x + Math.cos(a)*(s.range);
+      const wy = s.y + Math.sin(a)*(s.range);
+      const q  = isoToScreen(wx, wy);
+      ctx.lineTo(q.x, q.y+8);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,220,120,0.35)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,200,100,0.65)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  // projéteis
+  projectiles.forEach(p=>{const s=isoToScreen(p.x,p.y); ctx.fillStyle='#ffb267'; ctx.beginPath(); ctx.arc(s.x,s.y+8,3,0,Math.PI*2); ctx.fill()});
+
+  // mira + debug
+  drawCrosshair(mouse.x,mouse.y);
+  drawAimDebug();
+}
+
+/* ===== Mira & Debug ===== */
+function drawCrosshair(sx,sy){
+  ctx.save(); ctx.globalAlpha=0.95; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(sx-14,sy); ctx.lineTo(sx-4,sy); ctx.moveTo(sx+4,sy); ctx.lineTo(sx+14,sy); ctx.moveTo(sx,sy-14); ctx.lineTo(sx,sy-4); ctx.moveTo(sx,sy+4); ctx.lineTo(sx,sy+14);
+  ctx.strokeStyle='#9bd1ff'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(sx,sy,6,0,Math.PI*2); ctx.strokeStyle='#9bd1ff'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(sx,sy,1.5,0,Math.PI*2); ctx.fillStyle='#9bd1ff'; ctx.fill();
+  ctx.restore();
+}
+function drawAimDebug(){
+  const w=screenToWorld(mouse.x,mouse.y), dx=w.x-num(player?.x,0), dy=w.y-num(player?.y,0), ang=Math.atan2(dy,dx), deg=((ang*180/Math.PI)+360)%360, o=origin, spMul=getSpeedMultiplier();
+  debugEl.textContent = `aim.deg=${deg.toFixed(1)}°  aim.rad=${ang.toFixed(3)}
+dir=(${dx.toFixed(3)}, ${dy.toFixed(3)}) len=${Math.hypot(dx,dy).toFixed(3)}
+player=(${num(player?.x,0).toFixed(2)}, ${num(player?.y,0).toFixed(2)}) facing=${((num(player?.facingAngle,0)*180/Math.PI+360)%360).toFixed(1)}°
+origin=(${num(o.x,0).toFixed(1)}, ${num(o.y,0).toFixed(1)}) mouse=(${mouse.x|0}, ${mouse.y|0})
+speed.mul=${spMul.toFixed(3)}  base=${player.speed.toFixed(2)}  eff=${(player.speed*spMul).toFixed(2)}
+melee.cd=${meleeCD.toFixed(2)}  slashes=${slashes.length}`;
+}
+
+/* ===== UI / Console / Reset ===== */
+const logEl=document.getElementById('log');
+function log(t){const p=document.createElement('div'); p.textContent=`[${new Date().toLocaleTimeString()}] ${t}`; logEl.appendChild(p); logEl.scrollTop=logEl.scrollHeight;}
+function resetGame(reason='Reiniciando...'){
+  gameOver=false; player.dead=false;
+  dungeon=makeDungeon(); placePlayer(); sprinkleHoles(); scatterLoot(); spawnEnemies();
+  player.hp=player.maxHp; player.mana=player.maxMana; player.path=[]; player.attackTarget=null; applyAllBonuses(); centerCameraOnPlayer(); renderHotbar(); log(reason);
+}
+function dieInHole(){ if(gameOver) return; gameOver=true; player.dead=true; log('Você caiu em um buraco!'); setTimeout(()=>resetGame('Você caiu em um buraco! Reiniciando...'),400)}
+
+/* ===== Spawn / Enemies ===== */
+function spawnEnemies(n=16){enemies=[]; if(!dungeon?.grid) return; for(let i=0;i<n;i++){let x=rand(MAP_W),y=rand(MAP_H); if(dungeon.grid[y][x]===FLOOR){ const e=new Enemy(x+0.5,y+0.5, choice(['Skeleton','Fallen','Goatman'])); enemies.push(e); }}}
+function placePlayer(){const r=dungeon?.rooms?.[0] || {x:MAP_W/2-2,y:MAP_H/2-2,w:4,h:4}; const x=(r.x+Math.floor(r.w/2)), y=(r.y+Math.floor(r.h/2)); if(!player) player=new Player(10,10); player.x=x+0.5; player.y=y+0.5}
+
+/* ===== Poções (usar) ===== */
+function useUsable(it){
+  if(!isUsable(it)) return false;
+  if(it.potion==='hp'){ const v = Math.round(player.maxHp*0.15); player.hp = Math.min(player.maxHp, player.hp+v); log('Bebeu Poção de Vida (+15%)'); return true; }
+  if(it.potion==='mana'){ const v = Math.round(player.maxMana*0.15); player.mana = Math.min(player.maxMana, player.mana+v); log('Bebeu Poção de Mana (+15%)'); return true; }
+  if(it.potion==='str'){ addBuff('str',5,10); log('Poção de Força: +5 STR por 10s'); return true; }
+  if(it.potion==='spd'){ addBuff('spd',0.05,10); log('Poção de Velocidade: +5% por 10s'); return true; }
+  return false;
+}
+
+/* ===== Init ===== */
+(function init(){
+  try{
+    dungeon=makeDungeon();
+    player=new Player(10,10);
+    inv=new Inventory();
+    placePlayer(); sprinkleHoles(); scatterLoot(); spawnEnemies();
+    centerCameraOnPlayer();
+    renderEquipment(); applyAllBonuses();
+    renderHotbar();
+    last=performance.now();
+    requestAnimationFrame(step);
+  }catch(e){ console.error(e); log('Falha ao inicializar: '+e.message); }
+})();
+document.getElementById('spawnLoot').addEventListener('click',()=>{const it=rollItem(); if(inv.add(it)) log(`Adicionou ${it.name}${isUsable(it)?' x'+(it.count??1):''} ao inventário`); else log('Inventário cheio.')});
+window.addEventListener('error',e=>log('JS error: '+e.message));
+</script>
+</body>
+</html>
