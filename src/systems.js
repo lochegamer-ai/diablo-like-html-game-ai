@@ -13,6 +13,7 @@ let phaseTime = 0;
 // flow-field (campo de distâncias até o jogador)
 let flow = null;
 let flowTimer = 0;
+let objectiveResetTimer = -1;
 const FLOW_INTERVAL = 0.35; // recálculo a cada ~350ms
 let lastPlayerCell = {x:-1, y:-1};
 
@@ -35,10 +36,11 @@ export function enqueueDeath(en){
     if (state.objective?.active) {
       state.objective.kills++;
       updateObjectiveHUD();
-      if (state.objective.kills >= state.objective.total) {
-        state.objective.active = false;
-        setTimeout(()=>resetGame('Objetivo concluído! Reiniciando...'), 600);
-      }
+    if (state.objective.kills >= state.objective.total) {
+      state.objective.active = false;
+      objectiveResetTimer = 0.6; // daqui a 0.6s o update dispara o reset
+      log('Objetivo concluído!');
+    }
     }
   }
 function processDeaths(){while(deathQueue.length){const en=deathQueue.pop();const idx=state.enemies.indexOf(en);if(idx>=0)state.enemies.splice(idx,1);dropLootAt(en.x,en.y,1+Math.floor(Math.random()*2));state.player.exp+=15}}
@@ -271,5 +273,14 @@ export function update(dt){
   }
 
   state.player.mana=Math.min(state.player.maxMana, state.player.mana+2*dt);
+  
   processDeaths();
+
+  if (objectiveResetTimer >= 0) {
+    objectiveResetTimer -= dt;
+    if (objectiveResetTimer <= 0) {
+      objectiveResetTimer = -1;
+      resetGame('Objetivo concluído! Reiniciando...');
+    }
+  }
 }

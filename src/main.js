@@ -17,6 +17,16 @@ state.debugEl=document.getElementById('debug');
 function centerCameraOnPlayer(){ const o=getCenterOriginFor(state.player.x,state.player.y,state.canvas); state.origin.x=o.x; state.origin.y=o.y; }
 function repairState(){ state.dungeon=makeDungeon(); if(!state.player) state.player=new Player(10,10); placePlayer(); sprinkleHoles(state.dungeon,state.player); scatterLoot(); spawnEnemies(6); centerCameraOnPlayer(); }
 function placePlayer(){ const r=state.dungeon.rooms[0]||{x:MAP_W/2-2,y:MAP_H/2-2,w:4,h:4}; const x=(r.x+Math.floor(r.w/2)), y=(r.y+Math.floor(r.h/2)); state.player.x=x+0.5; state.player.y=y+0.5; }
+function repairWorld() {
+  state.dungeon = makeDungeon();
+  placePlayer();
+  sprinkleHoles(state.dungeon, state.player);
+  scatterLoot();
+  // usa seu helper do objetivo — garante (0/N) consistente
+  setupObjectiveAndSpawn();
+  centerCameraOnPlayer();
+}
+
 function setupObjectiveAndSpawn(){
   const total = 3 + Math.floor(Math.random()*3); // 3..5
   state.objective = {active:true,total,kills:0};
@@ -72,3 +82,12 @@ function init(){
   state.player.visualAngle=Math.atan2(sy,sx)||0;
 }
 init();
+// tecla R → resetGame (reaproveita o pipeline padrão)
+window.addEventListener('game-reset', e => {
+  resetGame(e?.detail || 'Reinício');
+});
+
+// systems.resetGame() → dispara 'game-repair' → reconstrução aqui
+window.addEventListener('game-repair', () => {
+  repairWorld();
+});
