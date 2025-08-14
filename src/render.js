@@ -263,12 +263,18 @@ function drawEnemy(en){
 export function render(){
   state.ctx.clearRect(0,0,state.canvas.width,state.canvas.height);
   const light=computeLight();
-  for (let y=0; y<MAP_H; y++) for (let x=0; x<MAP_W; x++) {
-  const cell = state.dungeon.grid[y][x];
-  const shade = (cell !== WALL) ? light[y][x] : 0.6; // paredes um pouco mais claras no topo
-  if (cell === WALL) drawWall(x, y, shade);
-  else               drawTile(x, y, shade);
-}
+  for (let y=0; y<MAP_H; y++) for (let x=0; x<MAP_W; x++) {   
+    const cell = state.dungeon.grid[y][x];
+    // quando oculto, renderiza parede como piso (mantendo buracos e luz)
+    if (cell === WALL && !state.showWalls) {
+      const shade = light[y][x];
+      drawTile(x, y, shade);
+      continue;
+    }
+    const shade = (cell !== WALL) ? light[y][x] : 0.6;
+    if (cell === WALL) drawWall(x, y, shade);
+    else               drawTile(x, y, shade);
+  }
   // enemies & loot minimal (drawn in systems if needed). This module focuses on world & player visuals.
   // loot no chão
   state.groundLoot.forEach(drawGroundLoot);

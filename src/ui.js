@@ -36,6 +36,62 @@ export function log(t){
   host.appendChild(el);
   host.scrollTop = host.scrollHeight;
 }
+
+// HUD (contador do objetivo) — cria se não existir
+export function ensureObjectiveHUD(){
+  let el = document.getElementById('objHUD');
+  if (el) return el;
+  const host = document.getElementById('gamewrap') || document.body;
+  el = document.createElement('div');
+  el.id = 'objHUD';
+  el.style.position = 'absolute';
+  el.style.top = '60px';
+  el.style.left = '50%';
+  el.style.transform = 'translateX(-50%)';
+  el.style.padding = '4px 10px';
+  el.style.borderRadius = '999px';
+  el.style.border = '1px solid #1e2229';
+  el.style.background = 'rgba(13,17,22,.85)';
+  el.style.font = '700 12px ui-monospace, Menlo, Consolas, monospace';
+  el.style.color = '#e9eef6';
+  host.appendChild(el);
+  return el;
+}
+
+export function updateObjectiveHUD(){
+  const el = ensureObjectiveHUD();
+  const o = state.objective;
+  el.textContent = o.active ? `( ${o.kills} / ${o.total} )` : '';
+}
+
+export function ensureWallsButton(){
+  let btn = document.getElementById('wallsBtn');
+  if (btn) return btn;
+  const host = document.getElementById('gamewrap') || document.body;
+  btn = document.createElement('button');
+  btn.id = 'wallsBtn';
+  btn.className = 'btn';
+  Object.assign(btn.style, {
+    position:'absolute', top:'6px', right:'10px', zIndex:10,
+    padding:'6px 10px', opacity:'0.9'
+  });
+  host.appendChild(btn);
+  return btn;
+}
+export function updateWallsButton(){
+  const btn = ensureWallsButton();
+  btn.textContent = state.showWalls ? 'Esconder paredes' : 'Mostrar paredes';
+}
+export function wireWallsButton(){
+  const btn = ensureWallsButton();
+  btn.onclick = () => {
+    state.showWalls = !state.showWalls;
+    updateWallsButton();
+    log(state.showWalls ? 'Paredes visíveis' : 'Paredes ocultas');
+  };
+  updateWallsButton();
+}
+
 export class Inventory{
   constructor(cols=8,rows=4){this.cols=cols;this.rows=rows;this.slots=Array(cols*rows).fill(null);this.el=document.getElementById('inv');this.render()}
   firstEmpty(){return this.slots.findIndex(x=>!x)}

@@ -9,7 +9,9 @@ export const state={
   mouse:{x:0,y:0}, isDragging:false, didPan:false, panMode:false,
   dragStart:{x:0,y:0}, originStart:{x:0,y:0},
   last:0, gameOver:false,
-  showNames:false
+  showNames:true,
+  showWalls:true,
+  objective:{active:false,total:0,kills:0}
 };
 export function validateState(){
   const d=state.dungeon;
