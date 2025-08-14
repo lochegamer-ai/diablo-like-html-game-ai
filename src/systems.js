@@ -18,6 +18,51 @@ let objectiveResetTimer = -1;
 const FLOW_INTERVAL = 0.35; // recálculo a cada ~350ms
 let lastPlayerCell = {x:-1, y:-1};
 
+// --- Melee (slash) ----------------------------------------------------------
+function angleDelta(a, b) {
+  // menor diferença angular (rad)
+  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+}
+
+function meleeDamage(){
+  // dano simples baseado em STR (ajuste se quiser)
+  const str = state.player?.stats?.str ?? 0;
+  return 8 + Math.floor(str * 1.2);
+}
+
+function updateSlashes(dt){
+  if (!state.slashes || state.slashes.length === 0) return;
+
+  for (const s of state.slashes){
+    s.t += dt;
+
+    // checa impacto 1x por inimigo (usa s.hit para não bater múltiplas vezes)
+    for (const en of state.enemies){
+      if (!en || en.dead) continue;
+      if (s.hit && s.hit.has(en.id)) continue;
+
+      const dx = en.x - s.x, dy = en.y - s.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > s.range) continue;
+
+      const a = Math.atan2(dy, dx);
+      if (angleDelta(s.angle, a) > (s.arc * 0.5)) continue;
+
+      // opcional: não atravessar paredes com a lâmina
+      // if (!lineClear(state.dungeon, s.x, s.y, en.x, en.y)) continue;
+
+      // aplica dano e marca como já atingido por este slash
+      en.hp -= meleeDamage();
+      if (s.hit) s.hit.add(en.id);
+      if (en.hp <= 0) enqueueDeath(en);
+    }
+  }
+
+  // remove slashes expirados
+  state.slashes = state.slashes.filter(s => s.t < s.ttl);
+}
+
+
 export function castFireboltWorld(wx,wy){
   const p=state.player;
   if(p.mana<6){log('Mana insuficiente'); return;}
@@ -215,6 +260,7 @@ function openChest(ch){
 
 export function update(dt){
   phaseTime += dt;
+  state.meleeCD = Math.max(0, (state.meleeCD || 0) - dt);
   let changed=false;
   // --- Flow-field pathfinding: rebuild quando muda o tile do player ou pelo tempo ---
   flowTimer -= dt;
@@ -290,6 +336,7 @@ export function update(dt){
       if (state.player.hp < 0) state.player.hp = 0;
     }
     });
+    
     if(s.t>=s.ttl) state.slashes.splice(i,1);
   }
 
@@ -355,6 +402,8 @@ export function update(dt){
   }
 
   state.player.mana=Math.min(state.player.maxMana, state.player.mana+2*dt);
+
+  updateSlashes(dt);
 
   processDeaths();
 
