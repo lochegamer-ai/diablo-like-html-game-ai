@@ -2,12 +2,12 @@
 import {state} from './state.js';
 import {lineClear, isWallAt, isHoleAt, moveWithCollision} from './collision.js';
 import {MAP_W, MAP_H, FLOOR} from './config.js';
-import {rand, choice} from './utils/math.js';
 import {rollItem} from './items.js';
 import {computeFlowFrom, isWalkableCell} from './pathfinding.js';
 import {screenToWorld, getCenterOriginFor} from './iso/coords.js';
 import {log, renderHotbar, applyAllBonuses, updateObjectiveHUD  } from './ui.js';
 import {clamp, angLerp} from './utils/math.js';
+import {MAX_LEVEL, XP_PER_KILL, xpThresholdForLevel} from './config.js';
 
 // tempo corrido da fase (reiniciado quando inimigos são gerados)
 let phaseTime = 0;
@@ -29,6 +29,16 @@ function meleeDamage(){
   const str = state.player?.stats?.str ?? 0;
   return 8 + Math.floor(str * 1.2);
 }
+
+// Aplica um empurrão temporário ao inimigo (processado no update)
+function applyKnockback(en, fromX, fromY, strength = 2.2, dur = 0.12){
+  const dx = en.x - fromX, dy = en.y - fromY;
+  const d  = Math.hypot(dx, dy) || 1;
+  en.kx = (dx / d) * strength;   // vel "instantânea" (tiles/s)
+  en.ky = (dy / d) * strength;
+  en.kb = dur;                   // tempo restante do empurrão
+}
+
 
 function updateSlashes(dt){
   if (!state.slashes || state.slashes.length === 0) return;
@@ -54,12 +64,50 @@ function updateSlashes(dt){
       // aplica dano e marca como já atingido por este slash
       en.hp -= meleeDamage();
       if (s.hit) s.hit.add(en.id);
+      applyKnockback(en, s.x, s.y);
       if (en.hp <= 0) enqueueDeath(en);
     }
   }
 
   // remove slashes expirados
   state.slashes = state.slashes.filter(s => s.t < s.ttl);
+}
+
+// ==== XP / LEVEL ====
+export function ensurePlayerXP(){
+  const p = state.player;
+  if (!p) return;
+  if (!Number.isFinite(p.level))    p.level    = 1;
+  if (!Number.isFinite(p.xp))       p.xp       = 0;
+  if (!Number.isFinite(p.xpToNext)) p.xpToNext = xpThresholdForLevel(p.level);
+}
+
+export function awardXP(amount){
+  const p = state.player;
+  if (!p) return;
+  ensurePlayerXP();
+
+  if (p.level >= MAX_LEVEL){
+    // já no cap; opcional: acumular XP “extra” sem subir
+    p.xp = 0; p.xpToNext = 0;
+    return;
+  }
+
+  p.xp += amount;
+  log(`Ganhou ${amount} XP.`);
+
+  // pode subir múltiplos níveis se XP “sobrar”
+  while (p.level < MAX_LEVEL && p.xp >= p.xpToNext){
+    p.xp -= p.xpToNext;
+    p.level += 1;
+    p.xpToNext = (p.level < MAX_LEVEL) ? xpThresholdForLevel(p.level) : 0;
+
+    log(`↑ Subiu para o nível ${p.level}!`);
+    // (Etapa 2: aqui vamos conceder pontos de atributo / efeitos de level up)
+  }
+
+  // se bateu no cap, normaliza a barra
+  if (p.level >= MAX_LEVEL){ p.xp = 0; p.xpToNext = 0; }
 }
 
 
@@ -92,6 +140,10 @@ state.meleeCD=0;
 const deathQueue=[];
 export function enqueueDeath(en){
     if(en.dead)return; en.dead=true; deathQueue.push(en)
+
+    // XP por inimigo comum
+    awardXP(XP_PER_KILL);
+
     // objetivo: contar mortes e atualizar HUD
     if (state.objective?.active) {
       state.objective.kills++;
@@ -162,6 +214,7 @@ export function spawnEnemies(n = 6){
         this.hp = 40; this.maxHp = 40;
         this.speed = 2.6; this.aggro = 8; this.damage = 6;
         this.dead = false;
+        this.kb = 0; this.kx = 0; this.ky = 0;
       }
     })());
   }
@@ -184,6 +237,11 @@ export function updateCameraFollow(dt){
 }
 
 export function resetGame(reason='Reiniciando...'){
+  // limpeza extra (opcional)
+  state.projectiles && (state.projectiles.length = 0);
+  state.slashes     && (state.slashes.length     = 0);
+  state.groundLoot  && (state.groundLoot.length  = 0);
+  state.chests      && (state.chests.length      = 0);
   state.gameOver=false; state.player.dead=false;
   window.dispatchEvent(new CustomEvent('game-repair'));
   state.player.hp=state.player.maxHp; state.player.mana=state.player.maxMana;
@@ -285,6 +343,13 @@ export function update(dt){
     const s=state.slashes[i]; s.t+=dt;
     state.enemies.forEach(en=>{
     if (en.dead) return;
+
+    // Se está em knockback, aplica e reduz o timer, sem IA neste frame
+    if ((en.kb || 0) > 0){
+      moveWithCollision(state.dungeon, en, (en.kx || 0) * dt, (en.ky || 0) * dt);
+      en.kb -= dt;
+      return; // <- não executa perseguição neste frame
+    }
 
     // 1) Tente seguir o gradiente do flow-field
     let usedFlow = false;

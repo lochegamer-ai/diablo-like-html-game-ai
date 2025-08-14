@@ -2,7 +2,7 @@
 import {MAP_W,MAP_H} from './config.js';
 export const state={
   canvas:null, ctx:null, origin:{x:0,y:0},
-  dungeon:null, player:null, enemies:[], groundLoot:[],
+  dungeon:null, player:null, enemies:[], groundLoot:[], chests:[],
   inv:null, hotbar:new Array(9).fill(null),
   projectiles:[], slashes:[], buffs:[],
   keys:{w:false,a:false,s:false,d:false},

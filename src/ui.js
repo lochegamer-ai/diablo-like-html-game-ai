@@ -1,6 +1,7 @@
 import {state} from './state.js';
 import {MAX_STACK} from './config.js';
 import {canStack,stackInto,isUsable,itemLabel,potionHint, itemLore} from './items.js';
+import { MAX_LEVEL } from './config.js';
 
 export const logEl = document.getElementById('log'); // pode ficar, mas não vamos depender dele
 
@@ -320,6 +321,36 @@ export function getTotalBonuses(){return sumBonuses(getEquipBonuses(),getBuffBon
 export function setStatText(id,base,bonus){document.getElementById(id).textContent=String(base);document.getElementById(id+'B').textContent=bonus?`( +${bonus} )`:''}
 export function applyAllBonuses(){const b=getTotalBonuses();state.player.maxHp=state.player.baseMaxHp+(b.hp||0)+(b.vit||0)*5; if(state.player.hp>state.player.maxHp)state.player.hp=state.player.maxHp; setStatText('str',state.player.stats.str,(b.str||0)); setStatText('dex',state.player.stats.dex,(b.dex||0)); setStatText('mag',state.player.stats.mag,(b.mag||0)); setStatText('vit',state.player.stats.vit,(b.vit||0))}
 export const hotbarEl=document.getElementById('hotbar');
+export function ensureXPUI(){
+  if (document.getElementById('xpWrap')) return;
+  const hud = document.getElementById('hud') || document.body;
+  const wrap = document.createElement('div');
+  wrap.id='xpWrap';
+  wrap.style.marginTop='6px';
+  wrap.innerHTML = `
+    <div style="font:12px ui-monospace;color:#aeb4bf">XP</div>
+    <div style="height:6px;border:1px solid #1e2229;border-radius:6px;background:#0d1116;overflow:hidden">
+      <div id="xpBar" style="height:100%;width:0;background:#6aa8ff"></div>
+    </div>
+    <div id="xpText" style="font:11px ui-monospace;color:#9fb3cc;margin-top:2px"></div>
+  `;
+  hud.appendChild(wrap);
+}
+export function updateXPUI(){
+  const p = state.player; if (!p) return;
+  const bar = document.getElementById('xpBar');
+  const txt = document.getElementById('xpText');
+  if (!bar || !txt) return;
+  if (p.level >= MAX_LEVEL){
+    bar.style.width = '100%';
+    txt.textContent = `Nível ${p.level} — MAX`;
+  } else {
+    const pct = Math.max(0, Math.min(1, p.xp / p.xpToNext));
+    bar.style.width = (pct*100).toFixed(1)+'%';
+    txt.textContent = `Nível ${p.level} — ${p.xp} / ${p.xpToNext} XP`;
+  }
+}
+
 
 export function renderHotbar(){
   hotbarEl.innerHTML = '';
