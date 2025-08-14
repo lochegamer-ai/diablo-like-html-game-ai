@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Diablo-like • Projeto Modular v2.0.1</title>
+  <link rel="icon" href="./favicon.ico"/>
+  <link rel="stylesheet" href="./styles/main.css"/>
+</head>
+<body>
+<div class="wrap">
+  <div id="gamewrap" class="panel">
+    <header>
+      <h1>Diablo-like (Projeto Modular)</h1>
+      <small>WASD • Ctrl+LMB Pan • <b>LMB Melee</b> • <b>RMB Firebolt</b> • Equip/Hotbar • Colisão • Buracos • Mira/Debug</small>
+    </header>
+    <canvas id="game" width="1024" height="720"></canvas>
+    <div id="debug" class="debug"></div>
+    <div class="hud">
+      <div class="orb" title="Vida"></div>
+      <div class="orb mana" title="Mana"></div>
+      <div class="row">
+        <div class="bar" style="width:220px"><i id="hpBar"></i></div>
+        <div class="bar mana" style="width:220px"><i id="manaBar"></i></div>
+      </div>
+    </div>
+    <div class="hotbar" id="hotbar"></div>
+  </div>
+  <aside class="panel side">
+    <header><h1>Personagem</h1><small>Warrior • Nível <span id="lvl">1</span></small></header>
+    <div class="section">
+      <div class="statgrid">
+        <div class="stat">STR <b id="str">10</b><small id="strB"></small></div>
+        <div class="stat">DEX <b id="dex">10</b><small id="dexB"></small></div>
+        <div class="stat">MAG <b id="mag">10</b><small id="magB"></small></div>
+        <div class="stat">VIT <b id="vit">10</b><small id="vitB"></small></div>
+      </div>
+    </div>
+    <div class="section">
+      <b>Equipamento</b>
+      <div class="equip">
+        <div class="e-slot" id="eq_main" data-slot="main"><span class="label">Mão Principal</span></div>
+        <div class="e-slot" id="eq_off" data-slot="off"><span class="label">Mão Secundária</span></div>
+        <div class="e-slot" id="eq_head" data-slot="head"><span class="label">Capacete</span></div>
+        <div class="e-slot" id="eq_chest" data-slot="chest"><span class="label">Torso</span></div>
+        <div class="e-slot" id="eq_legs" data-slot="legs"><span class="label">Pernas</span></div>
+        <div class="e-slot" id="eq_acc" data-slot="acc"><span class="label">Acessório</span></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <b>Inventário</b>
+        <button class="btn" id="spawnLoot">Gerar loot</button>
+      </div>
+      <div class="inv" id="inv"></div>
+    </div>
+    <div class="section">
+      <b>Controles</b>
+      <p><span class="kbd">WASD</span> mover • <span class="kbd">Ctrl Esq + LMB</span> pan da câmera •
+      <span class="kbd">LMB</span> melee • <span class="kbd">RMB</span> Firebolt •
+      <span class="kbd">J</span> melee • <span class="kbd">1..9</span> hotbar •
+      <span class="kbd">I</span> nomes • <span class="kbd">R</span> reiniciar</p>
+    </div>
+    <div class="section">
+      <b>Console</b>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
