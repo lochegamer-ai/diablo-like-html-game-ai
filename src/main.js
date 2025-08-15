@@ -3,7 +3,7 @@ import {state, validateState} from './state.js';
 import {TILE_W,TILE_H,MAP_W,MAP_H} from './config.js';
 import {makeDungeon, sprinkleHoles} from './dungeon.js';
 import {isoToScreen,screenToWorld,getCenterOriginFor} from './iso/coords.js';
-import {Inventory, renderHotbar, renderEquipment, applyAllBonuses, log, ensureObjectiveHUD, updateObjectiveHUD, wireWallsButton} from './ui.js';
+import {Inventory, renderHotbar, renderEquipment, applyAllBonuses, log, ensureObjectiveHUD, updateObjectiveHUD, wireWallsButton, ensureStartScreen, showStartScreen, hideStartScreen} from './ui.js';
 import {spawnEnemies, scatterLoot, update, updateCameraFollow, resetGame, spawnChests, ensurePlayerXP} from './systems.js';
 import {render} from './render.js';   // (garante render vindo do lugar certo)
 import {attachInput} from './input.js';
@@ -14,6 +14,14 @@ import {ensureXPUI, updateXPUI} from './ui.js'; // se optar pela barra
 state.canvas=document.getElementById('game');
 state.ctx=state.canvas.getContext('2d');
 state.debugEl=document.getElementById('debug');
+
+ function startGame(){
+   if (state.started) return;
+   state.started = true;
+   hideStartScreen();
+   init();                 // sua função existente que constrói dungeon, player etc.
+   requestAnimationFrame(step);
+ }
 
 function centerCameraOnPlayer(){ const o=getCenterOriginFor(state.player.x,state.player.y,state.canvas); state.origin.x=o.x; state.origin.y=o.y; }
 function repairState(){ state.dungeon=makeDungeon(); if(!state.player) state.player=new Player(10,10); placePlayer(); sprinkleHoles(state.dungeon,state.player); scatterLoot(); spawnEnemies(6); centerCameraOnPlayer(); }
@@ -74,7 +82,7 @@ function init(){
   renderHotbar();
   attachInput();
   state.last=performance.now();
-  requestAnimationFrame(step);
+ // requestAnimationFrame(step);
   document.getElementById('spawnLoot').addEventListener('click',()=>{
     const it=rollItem(); if(state.inv.add(it)) log(`Adicionou ${it.name}${it.kind==='potion'?' x'+(it.count??1):''} ao inventário`); else log('Inventário cheio.');
   });
@@ -100,7 +108,7 @@ function init(){
   const sx=(rx-ry)*(TILE_W/2), sy=(rx+ry)*(TILE_H/2);
   state.player.visualAngle=Math.atan2(sy,sx)||0;
 }
-init();
+//init();
 // tecla R → resetGame (reaproveita o pipeline padrão)
 window.addEventListener('game-reset', e => {
   resetGame(e?.detail || 'Reinício');
@@ -111,3 +119,15 @@ window.addEventListener('game-repair', () => {
   repairWorld();
   spawnChests(1,3);
 });
+
+
+ document.addEventListener('DOMContentLoaded', ()=>{
+   const scr = ensureStartScreen();
+   showStartScreen();
+   const btn = scr.querySelector('#btnStart');
+   if (btn) btn.addEventListener('click', startGame);
+   // opcional: Enter também começa
+   window.addEventListener('keydown', (e)=>{
+     if (!state.started && (e.key === 'Enter' || e.key === ' ')) startGame();
+   });
+ });

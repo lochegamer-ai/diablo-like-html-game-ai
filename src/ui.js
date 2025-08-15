@@ -2,6 +2,7 @@ import {state} from './state.js';
 import {MAX_STACK} from './config.js';
 import {canStack,stackInto,isUsable,itemLabel,potionHint, itemLore} from './items.js';
 import { MAX_LEVEL } from './config.js';
+import { iconSVGForItem } from './icons.js';
 
 export const logEl = document.getElementById('log'); // pode ficar, mas não vamos depender dele
 
@@ -112,6 +113,43 @@ function hideTooltip(){
   tipEl.style.display = 'none';
 }
 
+// ===== Tela Inicial =====
+export function ensureStartScreen(){
+  let el = document.getElementById('startScreen');
+  if (el) return el;
+
+  const host = document.getElementById('gamewrap') || document.body;
+  el = document.createElement('div');
+  el.id = 'startScreen';
+  Object.assign(el.style, {
+    position:'absolute', inset:'0', display:'flex', alignItems:'center', justifyContent:'center',
+    background:'linear-gradient(180deg, #0d1116 0%, #0b0f14 100%)',
+    zIndex:100
+  });
+
+  el.innerHTML = `
+    <div style="text-align:center; padding:28px 36px; border-radius:16px;
+                background:rgba(13,17,22,.86); border:1px solid #2a313b;
+                box-shadow:0 18px 40px rgba(0,0,0,.55);">
+      <div style="font:800 22px ui-sans-serif, system-ui; letter-spacing:.6px; color:#e9eef6;">
+        Diablo-like (Protótipo)
+      </div>
+      <div style="margin-top:8px; color:#9fb3cc; font:13px ui-monospace;">
+        Clique em <b>COMEÇAR</b> para iniciar a fase
+      </div>
+      <button id="btnStart" style="
+        margin-top:18px; padding:10px 18px; border-radius:10px; border:1px solid #3b4452;
+        background:#1b2330; color:#e9eef6; font:600 13px ui-sans-serif; cursor:pointer;">
+        COMEÇAR
+      </button>
+    </div>
+  `;
+  host.appendChild(el);
+  return el;
+}
+export function showStartScreen(){ ensureStartScreen().style.display = 'flex'; }
+export function hideStartScreen(){ const el = document.getElementById('startScreen'); if (el) el.style.display = 'none'; }
+
 // HUD (contador do objetivo) — cria se não existir
 export function ensureObjectiveHUD(){
   let el = document.getElementById('objHUD');
@@ -185,8 +223,13 @@ export class Inventory{
       const s=document.createElement('div'); s.className='slot'; s.dataset.idx=idx;
       if(it){
         const d=document.createElement('div'); d.className='item';
-        if(isUsable(it)){ d.classList.add('potion',it.potion); d.textContent=' '; }
-        else { d.textContent=itemLabel(it); }
+        if (isUsable(it)){
+          d.classList.add('potion', it.potion);
+          d.textContent = ' ';
+        } else {
+          d.innerHTML = iconSVGForItem(it);    // <- ícone
+        }
+
         d.draggable=true; d.title=isUsable(it)?potionHint(it):'';
 
         // tooltips
@@ -265,7 +308,7 @@ export function renderEquipment() {
       d.addEventListener('dragstart',  hideTooltip);
 
       d.className = 'item';
-      d.textContent = it.name;
+      d.innerHTML = iconSVGForItem(it);
       d.draggable = true;
       d.addEventListener('dragstart', e => {
         e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'equip', slot: s }));
@@ -300,6 +343,56 @@ export function renderEquipment() {
       }
     });
   }
+}
+
+// ===== Vitória (modal + cronômetro) =====
+export function ensureVictoryModal(){
+  let el = document.getElementById('victoryModal');
+  if (el) return el;
+  const host = document.getElementById('gamewrap') || document.body;
+  el = document.createElement('div');
+  el.id = 'victoryModal';
+  Object.assign(el.style, {
+    position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)',
+    padding:'14px 18px', borderRadius:'12px',
+    background:'rgba(13,17,22,.92)', border:'1px solid #2a313b',
+    color:'#e9eef6', font:'800 16px ui-sans-serif, system-ui',
+    letterSpacing:'0.5px', boxShadow:'0 12px 30px rgba(0,0,0,.45)',
+    display:'none', zIndex:50, textAlign:'center'
+  });
+  el.textContent = 'PARABÉNS VOCÊ VENCEU O NÍVEL!';
+  host.appendChild(el);
+  return el;
+}
+export function showVictoryModal(){ const el=ensureVictoryModal(); el.style.display='block'; }
+export function hideVictoryModal(){ const el=document.getElementById('victoryModal'); if(el) el.style.display='none'; }
+
+export function ensurePhaseTimer(){
+  let el = document.getElementById('phaseTimer');
+  if (el) return el;
+  const host = document.getElementById('gamewrap') || document.body;
+  el = document.createElement('div');
+  el.id = 'phaseTimer';
+  Object.assign(el.style, {
+    position:'absolute', top:'6px', right:'10px', zIndex:10,
+    padding:'6px 10px', borderRadius:'999px',
+    background:'rgba(13,17,22,.9)', border:'1px solid #2a313b',
+    color:'#f2c04a', font:'bold 13px ui-monospace', display:'none'
+  });
+  host.appendChild(el);
+  return el;
+}
+export function updatePhaseTimer(secondsLeft){
+  const el = ensurePhaseTimer();
+  el.style.display = 'block';
+  const s = Math.max(0, Math.ceil(secondsLeft));
+  const mm = String(Math.floor(s/60)).padStart(2,'0');
+  const ss = String(s%60).padStart(2,'0');
+  el.textContent = `Próxima fase em: ${mm}:${ss}`;
+}
+export function hidePhaseTimer(){
+  const el=document.getElementById('phaseTimer');
+  if(el) el.style.display='none';
 }
 
 

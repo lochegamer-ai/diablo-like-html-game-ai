@@ -3,6 +3,7 @@ import {state} from './state.js';
 import {TILE_W,TILE_H,FLOOR,WALL,HOLE,MAP_W,MAP_H} from './config.js';
 import {clamp,lerp} from './utils/math.js';
 import {isoToScreen,screenToWorld} from './iso/coords.js';
+import { ENEMY_TEMPLATES } from './config.js';
 
 // ALTURA visual da parede (em px na tela)
 const WALL_H = Math.round(TILE_H * 1.2);
@@ -215,46 +216,50 @@ function drawGroundLoot(g){
 
 function drawEnemy(en){
   const s = isoToScreen(en.x, en.y, state.origin);
+  const c = en.color || ENEMY_TEMPLATES[en.type]?.color || '#e6b980';
 
-  // sombra
   state.ctx.save();
-  state.ctx.beginPath();
-  state.ctx.ellipse(s.x, s.y + 10, 12, 6, 0, 0, Math.PI * 2);
+  // sombra
   state.ctx.fillStyle = 'rgba(0,0,0,.25)';
-  state.ctx.fill();
-
-  // corpo (triângulo virado para o player)
-  const ang = Math.atan2(state.player.y - en.y, state.player.x - en.x);
-  const ux = Math.cos(ang), uy = Math.sin(ang);
-  const fw = 16, back = 8, side = 12;
-  const nose = { x: s.x + ux * fw, y: s.y + uy * fw };
-  const tail = { x: s.x - ux * back, y: s.y - uy * back };
-  const rot = (x, y, a) => ({ x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) });
-  const lV = rot(ux, uy, 2.20), rV = rot(ux, uy, -2.20);
-  const left  = { x: s.x + lV.x * side, y: s.y + lV.y * side };
-  const right = { x: s.x + rV.x * side, y: s.y + rV.y * side };
-
   state.ctx.beginPath();
-  state.ctx.moveTo(tail.x, tail.y);
-  state.ctx.lineTo(left.x, left.y);
-  state.ctx.lineTo(nose.x, nose.y);
-  state.ctx.lineTo(right.x, right.y);
-  state.ctx.closePath();
-  state.ctx.fillStyle = '#ffb85c';
-  state.ctx.strokeStyle = '#7a4a17';
-  state.ctx.lineWidth = 2;
+  state.ctx.ellipse(s.x, s.y + 10, 12, 6, 0, 0, Math.PI*2);
   state.ctx.fill();
-  state.ctx.stroke();
 
-  // barra de HP
-  const w = 28, h = 4, padY = -14;
+  // corpo por tipo
+  state.ctx.strokeStyle = '#1e2229';
+  state.ctx.lineWidth = 2;
+  state.ctx.fillStyle = c;
+
+  if (en.type === 'melee'){
+    // triângulo
+    state.ctx.beginPath();
+    state.ctx.moveTo(s.x,   s.y - 10);
+    state.ctx.lineTo(s.x-10, s.y + 8);
+    state.ctx.lineTo(s.x+10, s.y + 8);
+    state.ctx.closePath();
+    state.ctx.fill(); state.ctx.stroke();
+  } else if (en.type === 'ranged'){
+    // losango
+    state.ctx.beginPath();
+    state.ctx.moveTo(s.x,   s.y - 10);
+    state.ctx.lineTo(s.x-10, s.y);
+    state.ctx.lineTo(s.x,   s.y + 10);
+    state.ctx.lineTo(s.x+10, s.y);
+    state.ctx.closePath();
+    state.ctx.fill(); state.ctx.stroke();
+  } else { // tank
+    // quadrado robusto
+    state.ctx.beginPath();
+    state.ctx.rect(s.x-11, s.y-11, 22, 22);
+    state.ctx.fill(); state.ctx.stroke();
+  }
+
+  // HP bar
   const pct = Math.max(0, Math.min(1, en.hp / en.maxHp));
-  state.ctx.fillStyle = '#1b2027';
-  state.ctx.fillRect(s.x - w/2, s.y + padY, w, h);
-  state.ctx.fillStyle = '#b33a3a';
-  state.ctx.fillRect(s.x - w/2, s.y + padY, w * pct, h);
-  state.ctx.strokeStyle = 'rgba(0,0,0,.5)';
-  state.ctx.strokeRect(s.x - w/2, s.y + padY, w, h);
+  state.ctx.fillStyle = 'rgba(0,0,0,.65)';
+  state.ctx.fillRect(s.x-12, s.y-18, 24, 4);
+  state.ctx.fillStyle = '#f26d6d';
+  state.ctx.fillRect(s.x-12, s.y-18, 24*pct, 4);
 
   state.ctx.restore();
 }

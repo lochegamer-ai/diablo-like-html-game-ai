@@ -13,3 +13,13 @@ export function xpThresholdForLevel(level){
   // L=1 -> 50, L=2 -> 100, L=3 -> 200, ...
   return XP_BASE_NEXT * Math.pow(2, Math.max(0, level - 1));
 }
+
+// ==== Inimigos ====
+export const ENEMY_TEMPLATES = {
+  melee:  { maxHp: 70,  speed: 2.7, damage: 10, meleeCD: 0.60, color: '#f4a261' },
+  ranged: { maxHp: 38,  speed: 2.5, damage: 8,  shootCD: 1.20, preferRange: 5.5, projSpeed: 6.0, color: '#64d2ff' },
+  tank:   { maxHp: 140, speed: 1.8, damage: 14, touchRate: 0.65, color: '#c77dff' }
+};
+
+// proporção aproximada (soma 1.0)
+export const ENEMY_SPAWN_WEIGHTS = { melee: 0.5, ranged: 0.3, tank: 0.2 };

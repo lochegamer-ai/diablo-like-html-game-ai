@@ -11,6 +11,8 @@ export const state={
   last:0, gameOver:false,
   showNames:true,
   showWalls:true,
+  started:false, 
+  victory:{active:false, bannerT:0, nextT:0},
   objective:{active:false,total:0,kills:0}
 };
 export function validateState(){

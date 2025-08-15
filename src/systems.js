@@ -5,18 +5,35 @@ import {MAP_W, MAP_H, FLOOR} from './config.js';
 import {rollItem} from './items.js';
 import {computeFlowFrom, isWalkableCell} from './pathfinding.js';
 import {screenToWorld, getCenterOriginFor} from './iso/coords.js';
-import {log, renderHotbar, applyAllBonuses, updateObjectiveHUD  } from './ui.js';
+import {log, renderHotbar, applyAllBonuses, updateObjectiveHUD, showVictoryModal, hideVictoryModal, updatePhaseTimer, hidePhaseTimer } from './ui.js';
 import {clamp, angLerp} from './utils/math.js';
 import {MAX_LEVEL, XP_PER_KILL, xpThresholdForLevel} from './config.js';
+import { ENEMY_TEMPLATES, ENEMY_SPAWN_WEIGHTS } from './config.js';
 
 // tempo corrido da fase (reiniciado quando inimigos são gerados)
 let phaseTime = 0;
 // flow-field (campo de distâncias até o jogador)
 let flow = null;
 let flowTimer = 0;
-let objectiveResetTimer = -1;
 const FLOW_INTERVAL = 0.35; // recálculo a cada ~350ms
 let lastPlayerCell = {x:-1, y:-1};
+
+function pickEnemyType(){
+  const r = Math.random();
+  const a = ENEMY_SPAWN_WEIGHTS;
+  const t = r < a.melee ? 'melee' :
+            r < a.melee + a.ranged ? 'ranged' : 'tank';
+  return t;
+}
+
+function spawnEnemyBolt(x, y, tx, ty, speed, dmg){
+  const dx = tx - x, dy = ty - y, d = Math.hypot(dx,dy) || 1;
+  state.projectiles.push({
+    x, y, vx: (dx/d)*speed, vy: (dy/d)*speed,
+    ttl: 2.0, t: 0, dmg,
+    hostile: true
+  });
+}
 
 // --- Melee (slash) ----------------------------------------------------------
 function angleDelta(a, b) {
@@ -46,26 +63,35 @@ function updateSlashes(dt){
   for (const s of state.slashes){
     s.t += dt;
 
-    // checa impacto 1x por inimigo (usa s.hit para não bater múltiplas vezes)
-    for (const en of state.enemies){
-      if (!en || en.dead) continue;
-      if (s.hit && s.hit.has(en.id)) continue;
-
-      const dx = en.x - s.x, dy = en.y - s.y;
+    if (s.owner === 'player'){
+      // player -> inimigos
+      for (const en of state.enemies){
+        if (!en || en.dead) continue;
+        if (s.hit && s.hit.has(en.id)) continue;
+        const dx = en.x - s.x, dy = en.y - s.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > s.range) continue;
+        const a = Math.atan2(dy, dx);
+        if (angleDelta(s.angle, a) > (s.arc * 0.5)) continue;
+        en.hp -= meleeDamage();
+        if (s.hit) s.hit.add(en.id);
+        applyKnockback(en, s.x, s.y);
+        if (en.hp <= 0) enqueueDeath(en);
+      }
+    } else if (s.owner === 'enemy'){
+      // inimigo -> player
+      const dx = state.player.x - s.x, dy = state.player.y - s.y;
       const dist = Math.hypot(dx, dy);
-      if (dist > s.range) continue;
-
-      const a = Math.atan2(dy, dx);
-      if (angleDelta(s.angle, a) > (s.arc * 0.5)) continue;
-
-      // opcional: não atravessar paredes com a lâmina
-      // if (!lineClear(state.dungeon, s.x, s.y, en.x, en.y)) continue;
-
-      // aplica dano e marca como já atingido por este slash
-      en.hp -= meleeDamage();
-      if (s.hit) s.hit.add(en.id);
-      applyKnockback(en, s.x, s.y);
-      if (en.hp <= 0) enqueueDeath(en);
+      if (dist <= s.range){
+        const a = Math.atan2(dy, dx);
+        if (angleDelta(s.angle, a) <= (s.arc * 0.5)){
+        // evita múltiplos hits do mesmo slash
+        if (!s.hitPlayer){
+          s.hitPlayer = true;
+          hitPlayer(s.dmg || 8, 'Golpe inimigo');
+          }
+        }
+      }
     }
   }
 
@@ -120,11 +146,17 @@ export function castFireboltWorld(wx,wy){
   state.projectiles.push({x:p.x,y:p.y,dx:dir.x*12/60,dy:dir.y*12/60,ttl:1.2,dmg:18});
 }
 export function castFireboltAtScreen(sx,sy){const w=screenToWorld(sx,sy,state.origin); castFireboltWorld(w.x,w.y)}
- export function meleeAttack(){
-   if(state.meleeCD>0||state.gameOver) return;
-   const angle=state.player.facingAngle||0;
-   state.slashes.push({x:state.player.x,y:state.player.y,angle,range:2.0,arc:(50*Math.PI/180),ttl:0.18,t:0,hit:new Set()});
-   state.meleeCD=0.35;
+export function meleeAttack(){
+  if(state.meleeCD>0||state.gameOver) return;
+  const angle=state.player.facingAngle||0;
+  state.slashes.push({
+    x:state.player.x, y:state.player.y,
+    angle, range:2.0, arc:(50*Math.PI/180),
+    ttl:0.18, t:0, hit:new Set(),
+    owner:'player'
+  });
+  state.meleeCD=0.35;
+  
   // abrir baús se bem perto (e linha limpa)
   for (const ch of state.chests){
     if (ch.opened) continue;
@@ -134,7 +166,24 @@ export function castFireboltAtScreen(sx,sy){const w=screenToWorld(sx,sy,state.or
       openChest(ch);
     }
   }
- }
+}
+
+// --- melee do inimigo (usar nos inimigos tipo "melee") ---
+function enemyMelee(en){
+  const dx = state.player.x - en.x, dy = state.player.y - en.y;
+  const ang = Math.atan2(dy, dx);
+  state.slashes.push({
+    x: en.x, y: en.y,
+    angle: ang,
+    range: 1.6,              // menor que o do player
+    arc: (55 * Math.PI/180),
+    ttl: 0.16, t: 0,
+    hit: new Set(),
+    owner: 'enemy',          // <- importante pro updateSlashes saber quem bate em quem
+    dmg: en.damage
+  });
+}
+
 state.meleeCD=0;
 
 const deathQueue=[];
@@ -148,11 +197,18 @@ export function enqueueDeath(en){
     if (state.objective?.active) {
       state.objective.kills++;
       updateObjectiveHUD();
-    if (state.objective.kills >= state.objective.total) {
-      state.objective.active = false;
-      objectiveResetTimer = 0.6; // daqui a 0.6s o update dispara o reset
-      log('Objetivo concluído!');
-    }
+
+      if (state.objective.kills >= state.objective.total) {
+        state.objective.active = false;
+
+        // ⬇️ NOVO fluxo de vitória
+        state.victory.active = true;
+        state.victory.bannerT = 2.0;   // mostra modal por 2s
+        state.victory.nextT   = 60.0;  // 60s para coletar
+        showVictoryModal();
+        updatePhaseTimer(state.victory.nextT);
+        log('Objetivo concluído! Coleta liberada por 60s.');
+      }
     }
   }
 function processDeaths(){while(deathQueue.length){const en=deathQueue.pop();const idx=state.enemies.indexOf(en);if(idx>=0)state.enemies.splice(idx,1);dropLootAt(en.x,en.y,1+Math.floor(Math.random()*2));state.player.exp+=15}}
@@ -206,17 +262,19 @@ export function spawnEnemies(n = 6){
 
     used.add(key);
 
-    // mesmo “modelo” de inimigo que você já usava
-    state.enemies.push(new (class {
-      constructor(){
-        this.id = Math.random().toString(36).slice(2);
-        this.x = x + 0.5; this.y = y + 0.5;
-        this.hp = 40; this.maxHp = 40;
-        this.speed = 2.6; this.aggro = 8; this.damage = 6;
-        this.dead = false;
-        this.kb = 0; this.kx = 0; this.ky = 0;
-      }
-    })());
+   const type = pickEnemyType();
+   const T = ENEMY_TEMPLATES[type];
+   state.enemies.push({
+      id: Math.random().toString(36).slice(2),
+      type,
+      x: x + 0.5, y: y + 0.5,
+      hp: T.maxHp, maxHp: T.maxHp,
+      speed: T.speed, damage: T.damage,
+      aggro: 8,
+      dead: false,
+      // timers/aux
+      atkCD: 0, shootCD: 0, kb: 0, kx: 0, ky: 0,
+    });
   }
 
   // fallback: se por alguma razão não bateu N, sincroniza o objetivo para não ficar impossível
@@ -243,11 +301,29 @@ export function resetGame(reason='Reiniciando...'){
   state.groundLoot  && (state.groundLoot.length  = 0);
   state.chests      && (state.chests.length      = 0);
   state.gameOver=false; state.player.dead=false;
+  // limpa UI/flags de vitória (se estavam ativos)
+  state.victory = {active:false, bannerT:0, nextT:0};
+  hideVictoryModal();
+  hidePhaseTimer();
+
   window.dispatchEvent(new CustomEvent('game-repair'));
   state.player.hp=state.player.maxHp; state.player.mana=state.player.maxMana;
   applyAllBonuses(); renderHotbar(); log(reason);
 }
 export function dieInHole(){ if(state.gameOver) return; state.gameOver=true; state.player.dead=true; log('Você caiu em um buraco!'); setTimeout(()=>resetGame('Você caiu em um buraco! Reiniciando...'),400); }
+
+function hitPlayer(dmg, reason='Você foi derrotado!'){
+  if (state.gameOver) return;
+  state.player.hp = Math.max(0, state.player.hp - (dmg||0));
+  if (state.player.hp <= 0){
+    state.gameOver = true;
+    state.player.dead = true;
+    hideVictoryModal();   // caso estivesse na tela de vitória
+    hidePhaseTimer();
+    log(reason);
+    setTimeout(()=>resetGame('Você foi derrotado! Reiniciando...'), 600);
+  }
+}
 
 // ---- BAÚS ----
 function chestOffsets() {
@@ -339,71 +415,79 @@ export function update(dt){
   if(Number.isFinite(scrAng)){ state.player.visualAngle = angLerp(state.player.visualAngle||scrAng, scrAng, Math.min(1,dt*20)); }
 
   if(state.meleeCD>0) state.meleeCD=Math.max(0,state.meleeCD-dt);
-  for(let i=state.slashes.length-1;i>=0;i--){
-    const s=state.slashes[i]; s.t+=dt;
-    state.enemies.forEach(en=>{
-    if (en.dead) return;
+  // for(let i=state.slashes.length-1;i>=0;i--){
+  //   const s=state.slashes[i]; s.t+=dt;
 
-    // Se está em knockback, aplica e reduz o timer, sem IA neste frame
-    if ((en.kb || 0) > 0){
-      moveWithCollision(state.dungeon, en, (en.kx || 0) * dt, (en.ky || 0) * dt);
-      en.kb -= dt;
-      return; // <- não executa perseguição neste frame
-    }
+  //   state.enemies.forEach(en=>{
+  //     if (en.dead) return;
 
-    // 1) Tente seguir o gradiente do flow-field
-    let usedFlow = false;
-    if (flow) {
-      const ex = Math.floor(en.x), ey = Math.floor(en.y);
-      const ed = flow?.[ey]?.[ex];
-      if (Number.isFinite(ed)) {
-        // escolha vizinho com distância menor (descendo o gradiente)
-        const C = [[1,0],[-1,0],[0,1],[0,-1]];
-        let best = null, bestD = ed;
-        for (let i=0;i<4;i++){
-          const nx = ex + C[i][0], ny = ey + C[i][1];
-          const nd = flow?.[ny]?.[nx];
-          if (!Number.isFinite(nd)) continue;
-          if (nd < bestD) { bestD = nd; best = {x:nx,y:ny}; }
-        }
-        if (best) {
-          const gx = best.x + 0.5, gy = best.y + 0.5; // centro do próximo tile
-          const dx = gx - en.x, dy = gy - en.y, d = Math.hypot(dx,dy) || 1;
-          const vx = (dx/d) * en.speed * dt, vy = (dy/d) * en.speed * dt;
-          moveWithCollision(state.dungeon, en, vx, vy);
-          usedFlow = true;
-        }
-      }
-    }
+  //     // knockback tem prioridade
+  //     if ((en.kb || 0) > 0){
+  //       moveWithCollision(state.dungeon, en, (en.kx||0)*dt, (en.ky||0)*dt);
+  //       en.kb -= dt; return;
+  //     }
 
-    // 2) Se não deu pra usar flow (tile inválido, corredor etc), caia pro comportamento anterior
-    if (!usedFlow) {
-      const dx = state.player.x - en.x, dy = state.player.y - en.y, d = Math.hypot(dx,dy) || 1;
-      const lureAggro = Math.min(10, phaseTime * 0.5);
-      const currentAggro = (en.aggro || 8) + lureAggro;
+  //     const dx = state.player.x - en.x, dy = state.player.y - en.y;
+  //     const d  = Math.hypot(dx,dy) || 1;
 
-      if (d < currentAggro && lineClear(state.dungeon, en.x, en.y, state.player.x, state.player.y)) {
-        const vx = (dx/d) * en.speed * dt;
-        const vy = (dy/d) * en.speed * dt;
-        moveWithCollision(state.dungeon, en, vx, vy);
-      } else {
-        const lureSpeed = en.speed * 0.45;
-        const vx = (dx/d) * lureSpeed * dt;
-        const vy = (dy/d) * lureSpeed * dt;
-        moveWithCollision(state.dungeon, en, vx, vy);
-      }
-    }
+  //     // timers
+  //     en.atkCD   = Math.max(0, (en.atkCD||0)   - dt);
+  //     en.shootCD = Math.max(0, (en.shootCD||0) - dt);
 
-    // 3) Dano de contato
-    const touch = Math.hypot(state.player.x - en.x, state.player.y - en.y);
-    if (touch < 0.9 && Math.random() < 0.7 * dt) {
-      state.player.hp -= en.damage;
-      if (state.player.hp < 0) state.player.hp = 0;
-    }
-    });
+  //     if (en.type === 'ranged'){
+  //       const T = ENEMY_TEMPLATES.ranged;
+  //       // manter distância
+  //       if (d > (T.preferRange+0.8)){
+  //         // aproxima (usa seu flow-field se existir)
+  //         const vx = (dx/d) * en.speed * dt;
+  //         const vy = (dy/d) * en.speed * dt;
+  //         moveWithCollision(state.dungeon, en, vx, vy);
+  //       } else if (d < (T.preferRange-0.8)){
+  //         // afasta
+  //         const vx = (-dx/d) * en.speed * dt;
+  //         const vy = (-dy/d) * en.speed * dt;
+  //         moveWithCollision(state.dungeon, en, vx, vy);
+  //       } // senão: fica orbitando/leves ajustes (pode ficar parado)
+
+  //       // atira se linha limpa e em recarga
+  //       if (en.shootCD === 0 && lineClear(state.dungeon, en.x, en.y, state.player.x, state.player.y)){
+  //         spawnEnemyBolt(en.x, en.y, state.player.x, state.player.y, T.projSpeed, en.damage);
+  //         en.shootCD = T.shootCD;
+  //       }
+  //     }
+  //     else if (en.type === 'melee'){
+  //       // corre atrás (seu flow-field já cuida)
+  //       const vx = (dx/d) * en.speed * dt;
+  //       const vy = (dy/d) * en.speed * dt;
+  //       moveWithCollision(state.dungeon, en, vx, vy);
+
+  //       // usa slash ao alcance
+  //       if (d < 1.4 && en.atkCD === 0){
+  //         enemyMelee(en);
+  //         en.atkCD = ENEMY_TEMPLATES.melee.meleeCD;
+  //       }
+  //     }
+  //     else { // tank
+  //       // avança sem dó
+  //       const vx = (dx/d) * en.speed * dt;
+  //       const vy = (dy/d) * en.speed * dt;
+  //       moveWithCollision(state.dungeon, en, vx, vy);
+
+  //       // dano por contato (taxa contínua)
+  //       const T = ENEMY_TEMPLATES.tank;
+  //       if (d < 0.9){
+  //         // taxa por segundo
+  //         if (Math.random() < (T.touchRate * dt)){
+  //           state.player.hp -= en.damage;
+  //           if (state.player.hp < 0) state.player.hp = 0;
+  //         }
+  //       }
+  //     }
+  //   });
+
     
-    if(s.t>=s.ttl) state.slashes.splice(i,1);
-  }
+  //   if(s.t>=s.ttl) state.slashes.splice(i,1);
+  // }
 
   const vx=(state.keys.d?1:0)-(state.keys.a?1:0), vy=(state.keys.s?1:0)-(state.keys.w?1:0);
   const mul=1+state.buffs.reduce((a,b)=>a+(b.type==='spd'?b.amount:0),0);
@@ -415,46 +499,131 @@ export function update(dt){
 
   state.enemies.forEach(en=>{
     if (en.dead) return;
+
+    // knockback tem prioridade
+    if ((en.kb || 0) > 0){
+      moveWithCollision(state.dungeon, en, (en.kx || 0) * dt, (en.ky || 0) * dt);
+      en.kb -= dt;
+      return;
+    }
+
     const dx = state.player.x - en.x;
     const dy = state.player.y - en.y;
     const d  = Math.hypot(dx, dy) || 1;
 
-    // aggro cresce ao longo do tempo, facilitando o encontro
-    const lureAggro = Math.min(10, phaseTime * 0.5); // +0.5 tile/s, até +10
-    const currentAggro = (en.aggro || 8) + lureAggro;
+    // timers
+    en.atkCD   = Math.max(0, (en.atkCD   || 0) - dt);
+    en.shootCD = Math.max(0, (en.shootCD || 0) - dt);
 
-    if (d < currentAggro && lineClear(state.dungeon, en.x, en.y, state.player.x, state.player.y)) {
-      // perseguição plena quando dentro do aggro e com linha "limpa"
-      const vx = (dx / d) * en.speed * dt;
-      const vy = (dy / d) * en.speed * dt;
-      moveWithCollision(state.dungeon, en, vx, vy);
-
-      // dano de contato
-      if (d < 0.9 && Math.random() < 0.7 * dt) {
-        state.player.hp -= en.damage;
-        if (state.player.hp < 0) state.player.hp = 0;
+    // ——— IA POR TIPO ———
+    if (en.type === 'ranged'){
+      const T = ENEMY_TEMPLATES.ranged;
+      // manter distância ideal
+      if (d > (T.preferRange + 0.8)){
+        const vx = (dx/d) * en.speed * dt;
+        const vy = (dy/d) * en.speed * dt;
+        moveWithCollision(state.dungeon, en, vx, vy);
+      } else if (d < (T.preferRange - 0.8)){
+        const vx = (-dx/d) * en.speed * dt;
+        const vy = (-dy/d) * en.speed * dt;
+        moveWithCollision(state.dungeon, en, vx, vy);
       }
-    } else {
-      // fora do aggro: deriva suave em direção ao jogador (ajuda a aproximar)
-      const lureSpeed = en.speed * 0.45; // bem mais lento que perseguição
-      const vx = (dx / d) * lureSpeed * dt;
-      const vy = (dy / d) * lureSpeed * dt;
-      moveWithCollision(state.dungeon, en, vx, vy);
+      // atira se linha limpa e cooldown zerado
+      if (en.shootCD === 0 && lineClear(state.dungeon, en.x, en.y, state.player.x, state.player.y)){
+        spawnEnemyBolt(en.x, en.y, state.player.x, state.player.y, T.projSpeed, en.damage);
+        en.shootCD = T.shootCD;
+      }
+    }
+    else if (en.type === 'melee'){
+      // usa flow-field se disponível (desce gradiente até o player)
+      let moved = false;
+      if (flow) {
+        const ex = Math.floor(en.x), ey = Math.floor(en.y);
+        const ed = flow?.[ey]?.[ex];
+        if (Number.isFinite(ed)) {
+          const C = [[1,0],[-1,0],[0,1],[0,-1]];
+          let best = null, bestD = ed;
+          for (let k=0;k<4;k++){
+            const nx = ex + C[k][0], ny = ey + C[k][1];
+            const nd = flow?.[ny]?.[nx];
+            if (Number.isFinite(nd) && nd < bestD) { bestD = nd; best = {x:nx,y:ny}; }
+          }
+          if (best){
+            const gx = best.x + 0.5, gy = best.y + 0.5;
+            const ddx = gx - en.x, ddy = gy - en.y, L = Math.hypot(ddx,ddy) || 1;
+            moveWithCollision(state.dungeon, en, (ddx/L)*en.speed*dt, (ddy/L)*en.speed*dt);
+            moved = true;
+          }
+        }
+      }
+      if (!moved){
+        // fallback: vai direto
+        moveWithCollision(state.dungeon, en, (dx/d)*en.speed*dt, (dy/d)*en.speed*dt);
+      }
+      // slash inimigo quando perto
+      if (d < 1.4 && en.atkCD === 0){
+        enemyMelee(en);
+        en.atkCD = ENEMY_TEMPLATES.melee.meleeCD; // ou 0.6 fixo
+      }
+    }
+    else { // tank
+      // avança sem dó (usa flow se quiser; aqui direto)
+      moveWithCollision(state.dungeon, en, (dx/d)*en.speed*dt, (dy/d)*en.speed*dt);
+      // dano de contato com taxa
+      const T = ENEMY_TEMPLATES.tank;
+      if (d < 0.9 && Math.random() < (T.touchRate * dt)){
+        hitPlayer(en.damage, 'Dano por contato');
+      }
     }
   });
 
-  for(let i=state.projectiles.length-1;i>=0;i--){
-    const p=state.projectiles[i]; p.x+=p.dx; p.y+=p.dy; p.ttl-=dt;
-    if(p.ttl<=0){ state.projectiles.splice(i,1); continue; }
-    state.enemies.forEach(en=>{
-      if(en.dead) return;
-      if(Math.hypot(en.x-p.x,en.y-p.y)<0.6){
-        const spellDmg=p.dmg+Math.floor((state.player.stats.mag)*0.3);
-        en.hp-=spellDmg; p.ttl=0;
-        if(en.hp<=0) enqueueDeath(en);
+
+  for (let i = state.projectiles.length - 1; i >= 0; i--) {
+    const p = state.projectiles[i];
+
+    // mover — aceita os dois formatos que temos no código:
+    // - projéteis do INIMIGO: {vx, vy} em tiles/segundo (spawnEnemyBolt)
+    // - projéteis do PLAYER : {dx, dy} como delta por frame (castFireboltWorld)
+    if (Number.isFinite(p.vx)) {           // inimigo
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    } else {                                // player (formato antigo)
+      p.x += p.dx;
+      p.y += p.dy;
+    }
+
+    p.ttl -= dt;
+    if (p.ttl <= 0) { state.projectiles.splice(i, 1); continue; }
+
+    // (opcional) colisão com paredes/buracos:
+    // if (isWallAt(state.dungeon, p.x, p.y) || isHoleAt(state.dungeon, p.x, p.y)) {
+    //   state.projectiles.splice(i, 1);
+    //   continue;
+    // }
+
+    if (p.hostile) {
+      // projétil inimigo → acerta o PLAYER
+      const dx = state.player.x - p.x, dy = state.player.y - p.y;
+      if (Math.hypot(dx, dy) < 0.6) {
+        hitPlayer(p.dmg || 8, 'Atingido por projétil');
+        state.projectiles.splice(i, 1);
+        continue;
       }
-    });
+    } else {
+      // projétil do player → acerta INIMIGOS (comportamento que já existia)
+      for (const en of state.enemies) {
+        if (en.dead) continue;
+        if (Math.hypot(en.x - p.x, en.y - p.y) < 0.6) {
+          const spellDmg = (p.dmg || 10) + Math.floor((state.player.stats.mag) * 0.3);
+          en.hp -= spellDmg;
+          if (en.hp <= 0) enqueueDeath(en);
+          state.projectiles.splice(i, 1);
+          break;
+        }
+      }
+    }
   }
+
 
   for(let i=state.groundLoot.length-1;i>=0;i--){
     const g=state.groundLoot[i];
@@ -472,11 +641,20 @@ export function update(dt){
 
   processDeaths();
 
-  if (objectiveResetTimer >= 0) {
-    objectiveResetTimer -= dt;
-    if (objectiveResetTimer <= 0) {
-      objectiveResetTimer = -1;
-      resetGame('Objetivo concluído! Reiniciando...');
+    // ===== pós-vitória: modal + countdown =====
+  if (state.victory?.active) {
+    // somem o modal após 2s
+    if (state.victory.bannerT > 0) {
+      state.victory.bannerT -= dt;
+      if (state.victory.bannerT <= 0) hideVictoryModal();
+    }
+    // atualiza cronômetro e dispara a próxima fase
+    state.victory.nextT -= dt;
+    updatePhaseTimer(state.victory.nextT);
+    if (state.victory.nextT <= 0) {
+      state.victory.active = false;
+      hidePhaseTimer();
+      resetGame('Iniciando próxima fase...');
     }
   }
 }
