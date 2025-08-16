@@ -32,23 +32,27 @@ export function attachInput(){
   // ===== mousedown =====
   canvas.addEventListener('mousedown', e => {
     // RMB = magia
-    if (e.button === 2) { 
-      castFireboltAtScreen(e.offsetX, e.offsetY);
-      return;
+  if (e.button === 2) {
+    // Warrior: RMB é o Whirl (já tratado em main.js). Não solta fireball aqui.
+    // Se quiser manter fireball só para MAGE no futuro:
+    if (state.class === 'mage') {
+      castFireboltAtScreen(e.clientX, e.clientY);
     }
+    e.preventDefault();
+    return;
+  }
 
-    // LMB: inicia pan SOMENTE se Ctrl estiver pressionado
-    if (e.button === 0) {
-      const wantPan = e.ctrlKey || ctrlHeld;
-      state.panMode = wantPan;
-      if (wantPan) {
-        state.isDragging = true;
-        state.didPan = false;
-        state.dragStart = { x: e.clientX, y: e.clientY };
-        state.originStart = { x: state.origin.x, y: state.origin.y };
-      }
+  // LMB: inicia pan SOMENTE se Ctrl estiver pressionado
+  if (e.button === 0) {
+    const wantPan = e.ctrlKey || ctrlHeld;
+    state.panMode = wantPan;
+    if (wantPan) {
+      state.isDragging = true;
+      state.didPan = false;
+      state.dragStart = { x: e.clientX, y: e.clientY };
+      state.originStart = { x: state.origin.x, y: state.origin.y };
     }
-  });
+  }});
 
   // ===== mouseup =====
   canvas.addEventListener('mouseup', e => {

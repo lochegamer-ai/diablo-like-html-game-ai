@@ -23,3 +23,15 @@ export const ENEMY_TEMPLATES = {
 
 // proporção aproximada (soma 1.0)
 export const ENEMY_SPAWN_WEIGHTS = { melee: 0.5, ranged: 0.3, tank: 0.2 };
+
+// ==== Skills: Warrior ====
+export const SKILLS = {
+  warrior: {
+    basic:   { key: 'LMB', name: 'Ataque' },
+    skill:   { key: 'RMB', name: 'Whirl', cooldown: 1 },
+    ultimate:{ key: 'E',   name: 'Berserk', cooldown: 120, duration: 20,
+               speedBonus: 1.5,  // +150% velocidade (somado ao sistema de buffs)
+               dmgBonus:   1.0   // +100% dano (multiplicador)
+    }
+  }
+};

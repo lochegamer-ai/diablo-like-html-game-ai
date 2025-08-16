@@ -12,6 +12,9 @@ export const state={
   showNames:true,
   showWalls:true,
   started:false, 
+  class: 'warrior',
+  skill: { cds: { skill: 0, ult: 0 } }, // cooldowns em segundos
+  vfx:   { spins: [] },                  // VFX do ataque giratório
   victory:{active:false, bannerT:0, nextT:0},
   objective:{active:false,total:0,kills:0}
 };

@@ -9,6 +9,8 @@ import {log, renderHotbar, applyAllBonuses, updateObjectiveHUD, showVictoryModal
 import {clamp, angLerp} from './utils/math.js';
 import {MAX_LEVEL, XP_PER_KILL, xpThresholdForLevel} from './config.js';
 import { ENEMY_TEMPLATES, ENEMY_SPAWN_WEIGHTS } from './config.js';
+import { SKILLS } from './config.js';
+import { ensureSkillBar, updateSkillBar } from './ui.js';
 
 // tempo corrido da fase (reiniciado quando inimigos são gerados)
 let phaseTime = 0;
@@ -44,7 +46,13 @@ function angleDelta(a, b) {
 function meleeDamage(){
   // dano simples baseado em STR (ajuste se quiser)
   const str = state.player?.stats?.str ?? 0;
-  return 8 + Math.floor(str * 1.2);
+  const base = 8 + Math.floor(str * 1.2);
+  // buffs de multiplicador de dano (ex.: ultimate)
+  let mul = 1;
+  for (const bf of state.buffs){
+    if (bf.type === 'dmgMul') mul *= (1 + (bf.amount || 0));
+  }
+  return Math.floor(base * mul);
 }
 
 // Aplica um empurrão temporário ao inimigo (processado no update)
@@ -98,6 +106,53 @@ function updateSlashes(dt){
   // remove slashes expirados
   state.slashes = state.slashes.filter(s => s.t < s.ttl);
 }
+
+export function warriorBerserk(){
+  if (state.gameOver) return;
+  if (state.skill.cds.ult > 0) return; // cooldown
+
+  const U = SKILLS.warrior.ultimate;
+
+  // aplica buffs temporários
+  state.buffs.push({ type:'spd',    amount: U.speedBonus, t: U.duration });  // +150% velocidade
+  state.buffs.push({ type:'dmgMul', amount: U.dmgBonus,   t: U.duration });  // +100% dano
+  applyAllBonuses();
+
+  // cooldown
+  state.skill.cds.ult = U.cooldown; // 120s
+  log(`Berserk ativado por ${U.duration}s (+Vel +Dano).`);
+}
+
+export function warriorWhirl(){
+  if (state.gameOver) return;
+  if (state.skill.cds.skill > 0) return; // cooldown
+
+  const R = 2.05;              // raio ~2 tiles
+  const originX = state.player.x, originY = state.player.y;
+
+  // dano do Whirl (um pouco menor que o melee puro, mas em área)
+  const dmg = Math.max(1, Math.floor(meleeDamage() * 0.85));
+
+  let hits = 0;
+  for (const en of state.enemies){
+    if (!en || en.dead) continue;
+    const d = Math.hypot(en.x - originX, en.y - originY);
+    if (d <= R){
+      en.hp -= dmg;
+      applyKnockback(en, originX, originY, 3.0, 0.10); // leve knock
+      if (en.hp <= 0) enqueueDeath(en);
+      hits++;
+    }
+  }
+
+  // VFX simples: anel que expande
+  state.vfx.spins.push({ x: originX, y: originY, t:0, ttl:0.28 });
+
+  // coloca em cooldown
+  state.skill.cds.skill = SKILLS.warrior.skill.cooldown; // 10s
+  log(`Whirl usado (${hits} acertos).`);
+}
+
 
 // ==== XP / LEVEL ====
 export function ensurePlayerXP(){
@@ -395,6 +450,11 @@ function openChest(ch){
 export function update(dt){
   phaseTime += dt;
   state.meleeCD = Math.max(0, (state.meleeCD || 0) - dt);
+
+  // cooldowns das skills
+  state.skill.cds.skill = Math.max(0, (state.skill.cds.skill || 0) - dt);
+  state.skill.cds.ult   = Math.max(0, (state.skill.cds.ult   || 0) - dt);
+
   let changed=false;
   // --- Flow-field pathfinding: rebuild quando muda o tile do player ou pelo tempo ---
   flowTimer -= dt;
@@ -636,7 +696,13 @@ export function update(dt){
   }
 
   state.player.mana=Math.min(state.player.maxMana, state.player.mana+2*dt);
-
+  
+  // VFX do Whirl
+  for (let i = state.vfx.spins.length - 1; i >= 0; i--){
+    const v = state.vfx.spins[i];
+    v.t += dt;
+    if (v.t >= v.ttl) state.vfx.spins.splice(i,1);
+  }
   updateSlashes(dt);
 
   processDeaths();

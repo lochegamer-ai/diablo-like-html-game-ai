@@ -4,9 +4,26 @@ import {TILE_W,TILE_H,FLOOR,WALL,HOLE,MAP_W,MAP_H} from './config.js';
 import {clamp,lerp} from './utils/math.js';
 import {isoToScreen,screenToWorld} from './iso/coords.js';
 import { ENEMY_TEMPLATES } from './config.js';
+import { SKILLS } from './config.js';
 
 // ALTURA visual da parede (em px na tela)
 const WALL_H = Math.round(TILE_H * 1.2);
+
+function drawWhirlVfx(){
+  for (const v of state.vfx.spins){
+    const p = Math.max(0, Math.min(1, v.t / v.ttl));
+    const rTiles = 0.6 + 1.7 * p;   // raio cresce
+    const s = isoToScreen(v.x, v.y, state.origin);
+
+    state.ctx.save();
+    state.ctx.beginPath();
+    state.ctx.arc(s.x, s.y, rTiles * 18, 0, Math.PI*2);
+    state.ctx.strokeStyle = `rgba(255, 215, 120, ${1 - p})`;
+    state.ctx.lineWidth = 3;
+    state.ctx.stroke();
+    state.ctx.restore();
+  }
+}
 
 // desenha um bloco elevando o "top" e criando faces
 function drawWall(x, y, shade) {
@@ -396,6 +413,8 @@ export function render(){
   // baús
   (state.chests || []).forEach(drawChest);
   
+  drawWhirlVfx();
+
   // inimigos
   state.enemies.forEach(drawEnemy);
 

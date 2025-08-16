@@ -2,6 +2,7 @@ import {state} from './state.js';
 import {MAX_STACK} from './config.js';
 import {canStack,stackInto,isUsable,itemLabel,potionHint, itemLore} from './items.js';
 import { MAX_LEVEL } from './config.js';
+import { SKILLS } from './config.js';
 import { iconSVGForItem } from './icons.js';
 
 export const logEl = document.getElementById('log'); // pode ficar, mas não vamos depender dele
@@ -38,6 +39,83 @@ export function log(t){
   host.appendChild(el);
   host.scrollTop = host.scrollHeight;
 }
+
+// ===== HUD de Skills (3 círculos) =====
+export function ensureSkillBar(){
+  let el = document.getElementById('skillbar');
+ const host = document.getElementById('gamewrap') || document.body;
+ if (!el) {
+   el = document.createElement('div');
+   el.id = 'skillbar';
+   host.appendChild(el);
+ }
+ // SEMPRE atualize os estilos (mesmo se já existir)
+ Object.assign(el.style, {
+   position:'absolute',
+   right:'12px',         // -> agora âncora na direita
+   left:'',              // -> remove âncora da esquerda
+   bottom:'12px',
+   display:'flex',
+   gap:'10px',
+   zIndex:8
+ });
+
+ // Crie os botões só se ainda não existirem
+ if (!el.querySelector('.skillbtn')) {
+   function mk(id,label){
+     const w = document.createElement('div');
+     w.className = 'skillbtn';
+     Object.assign(w.style, {
+       position:'relative', width:'54px', height:'54px', borderRadius:'50%',
+       border:'2px solid #394353', background:'#151b23', boxShadow:'0 8px 20px rgba(0,0,0,.35)',
+       display:'flex', alignItems:'center', justifyContent:'center', color:'#e9eef6',
+       font:'700 12px ui-sans-serif', userSelect:'none'
+     });
+     w.id = id;
+     const cd = document.createElement('div');
+     cd.className = 'cooldown';
+     Object.assign(cd.style, {
+       position:'absolute', inset:'-2px', borderRadius:'50%',
+       background:'conic-gradient(rgba(0,0,0,.55) 0deg, rgba(0,0,0,.55) 0deg, transparent 0deg)',
+       pointerEvents:'none'
+     });
+     const lab = document.createElement('div');
+     lab.textContent = label;
+     w.appendChild(lab);
+     w.appendChild(cd);
+     return w;
+   }
+   el.appendChild(mk('skill_basic','LMB'));
+   el.appendChild(mk('skill_active','RMB'));
+   el.appendChild(mk('skill_ult','E'));
+ }
+ return el;
+}
+
+export function updateSkillBar(){
+  ensureSkillBar();
+  // Básica não tem cooldown
+  const cdSkill = Math.max(0, state.skill.cds.skill || 0);
+  const cdUlt   = Math.max(0, state.skill.cds.ult   || 0);
+
+  const setFill = (id, cur, max) => {
+    const el = document.querySelector(`#${id} .cooldown`);
+    if (!el) return;
+    if (!max || max <= 0 || cur <= 0){
+      el.style.background = 'conic-gradient(transparent 0deg, transparent 360deg)';
+      return;
+    }
+    const perc = Math.max(0, Math.min(1, cur / max));
+    const deg  = Math.round(perc * 360);
+    el.style.background =
+      `conic-gradient(rgba(0,0,0,.55) 0deg, rgba(0,0,0,.55) ${deg}deg, transparent ${deg}deg 360deg)`;
+  };
+
+  const W = SKILLS.warrior;
+  setFill('skill_active', cdSkill, W.skill.cooldown);
+  setFill('skill_ult',   cdUlt,   W.ultimate.cooldown);
+}
+
 
 // ——— Tooltip host ———
 let tipEl = null;
